@@ -210,6 +210,32 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Rule Target Picker (shared between both editors)
+
+/// Reusable target picker that handles the speaker/group selection and syncs the `targetGroupId`.
+private struct RuleTargetPicker: View {
+    @Binding var speakerName: String
+    @Binding var targetGroupId: String?
+    let targets: [RuleTarget]
+
+    var body: some View {
+        Picker("Target:", selection: $speakerName) {
+            Text("All Speakers").tag("")
+            if !speakerName.isEmpty,
+               !targets.contains(where: { $0.speakerName == speakerName }) {
+                Text(speakerName).tag(speakerName)
+            }
+            ForEach(targets) { target in
+                Text(target.label).tag(target.speakerName)
+            }
+        }
+        .frame(maxWidth: 180)
+        .onChange(of: speakerName) { _, newValue in
+            targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
+        }
+    }
+}
+
 // MARK: - Rule Editors
 
 struct VolumeRuleEditor: View {
@@ -225,26 +251,15 @@ struct VolumeRuleEditor: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
 
-                Picker("Target:", selection: $rule.speakerName) {
-                    Text("All Speakers").tag("")
-                    if !rule.speakerName.isEmpty,
-                       !targets.contains(where: { $0.speakerName == rule.speakerName }) {
-                        Text(rule.speakerName).tag(rule.speakerName)
-                    }
-                    ForEach(targets) { target in
-                        Text(target.label).tag(target.speakerName)
-                    }
-                }
-                .frame(maxWidth: 180)
-                .onChange(of: rule.speakerName) { _, newValue in
-                    rule.targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
-                }
+                RuleTargetPicker(
+                    speakerName: $rule.speakerName,
+                    targetGroupId: $rule.targetGroupId,
+                    targets: targets
+                )
 
                 Spacer()
 
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
@@ -286,26 +301,15 @@ struct AutoStopRuleEditor: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
 
-                Picker("Target:", selection: $rule.speakerName) {
-                    Text("All Speakers").tag("")
-                    if !rule.speakerName.isEmpty,
-                       !targets.contains(where: { $0.speakerName == rule.speakerName }) {
-                        Text(rule.speakerName).tag(rule.speakerName)
-                    }
-                    ForEach(targets) { target in
-                        Text(target.label).tag(target.speakerName)
-                    }
-                }
-                .frame(maxWidth: 180)
-                .onChange(of: rule.speakerName) { _, newValue in
-                    rule.targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
-                }
+                RuleTargetPicker(
+                    speakerName: $rule.speakerName,
+                    targetGroupId: $rule.targetGroupId,
+                    targets: targets
+                )
 
                 Spacer()
 
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
@@ -322,6 +326,8 @@ struct AutoStopRuleEditor: View {
         .opacity(rule.enabled ? 1 : 0.5)
     }
 }
+
+// MARK: - Time Picker
 
 struct TimePickerCompact: View {
     @Binding var hour: Int

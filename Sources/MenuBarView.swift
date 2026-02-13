@@ -30,7 +30,6 @@ struct MenuBarView: View {
             } else {
                 ForEach(engine.groups) { group in
                     if group.members.count > 1 {
-                        // Multi-speaker group — show group header
                         HStack(spacing: 4) {
                             Image(systemName: "rectangle.3.group")
                                 .font(.caption2)
@@ -172,6 +171,8 @@ private struct MenuActionRow: View {
     }
 }
 
+// MARK: - Speaker Row
+
 struct SpeakerRow: View {
     let speaker: Speaker
     var indented: Bool = false
@@ -181,8 +182,8 @@ struct SpeakerRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Image(systemName: transportIcon)
-                            .foregroundStyle(transportColor)
+                        Image(systemName: speaker.transportState.icon)
+                            .foregroundStyle(speaker.transportState.color)
                             .font(.caption)
                         Text(speaker.name)
                             .font(.system(.body, weight: .medium))
@@ -224,23 +225,31 @@ struct SpeakerRow: View {
         .padding(.vertical, 6)
     }
 
-    private var transportIcon: String {
-        let state = speaker.transportState.uppercased()
-        if state.contains("PAUSE") { return "pause.fill" }
-        if state.contains("PLAY") { return "play.fill" }
-        return "stop.fill"
-    }
-
-    private var transportColor: Color {
-        let state = speaker.transportState.uppercased()
-        if state.contains("PAUSE") { return .orange }
-        if state.contains("PLAY") { return .green }
-        return .secondary
-    }
-
     private var volumeColor: Color {
         if speaker.volume > 80 { return .red }
         if speaker.volume > 50 { return .orange }
         return .primary
+    }
+}
+
+// MARK: - TransportState UI
+
+extension TransportState {
+    var icon: String {
+        switch self {
+        case .playing: "play.fill"
+        case .paused: "pause.fill"
+        case .transitioning: "forward.fill"
+        case .stopped, .unknown: "stop.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .playing: .green
+        case .paused: .orange
+        case .transitioning: .blue
+        case .stopped, .unknown: .secondary
+        }
     }
 }

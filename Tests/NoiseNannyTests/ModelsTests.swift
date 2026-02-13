@@ -1,15 +1,18 @@
-import XCTest
+import Testing
 @testable import NoiseNanny
 
-final class ModelsTests: XCTestCase {
-    func testDisabledRuleIsNeverActive() {
+@Suite("Schedule Rule Logic")
+struct ScheduleRuleTests {
+    @Test("Disabled rule is never active")
+    func disabledRuleIsNeverActive() {
         var rule = VolumeRule()
         rule.enabled = false
 
-        XCTAssertFalse(rule.isActiveNow())
+        #expect(!rule.isActiveNow())
     }
 
-    func testEqualStartAndEndIsInactive() {
+    @Test("Equal start and end produces inactive rule")
+    func equalStartAndEndIsInactive() {
         let rule = VolumeRule(
             speakerName: "",
             maxVolume: 20,
@@ -20,10 +23,11 @@ final class ModelsTests: XCTestCase {
             enabled: true
         )
 
-        XCTAssertFalse(rule.isActiveNow())
+        #expect(!rule.isActiveNow())
     }
 
-    func testRuleActiveForWindowAroundNow() {
+    @Test("Rule is active for a window around now")
+    func ruleActiveForWindowAroundNow() {
         let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
         let current = (now.hour ?? 0) * 60 + (now.minute ?? 0)
         let start = (current + 1440 - 30) % 1440
@@ -39,10 +43,11 @@ final class ModelsTests: XCTestCase {
             enabled: true
         )
 
-        XCTAssertTrue(rule.isActiveNow())
+        #expect(rule.isActiveNow())
     }
 
-    func testRuleInactiveForFutureWindow() {
+    @Test("Rule is inactive for a future window")
+    func ruleInactiveForFutureWindow() {
         let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
         let current = (now.hour ?? 0) * 60 + (now.minute ?? 0)
         let start = (current + 30) % 1440
@@ -58,68 +63,143 @@ final class ModelsTests: XCTestCase {
             enabled: true
         )
 
-        XCTAssertFalse(rule.isActiveNow())
+        #expect(!rule.isActiveNow())
     }
+}
 
-    func testAppliesToAllSpeakersWhenTargetEmpty() {
+@Suite("Speaker Targeting")
+struct SpeakerTargetingTests {
+    private let kitchen = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
+    private let livingRoom = Speaker(ip: "1.2.3.5", name: "Living Room", udn: "speaker-living")
+    private let office = Speaker(ip: "1.2.3.6", name: "Office", udn: "speaker-office")
+
+    @Test("Empty target applies to all speakers")
+    func appliesToAllSpeakersWhenTargetEmpty() {
         let rule = VolumeRule(speakerName: "")
-        let speaker = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
-
-        XCTAssertTrue(rule.appliesTo(speaker))
+        #expect(rule.appliesTo(kitchen))
     }
 
-    func testAppliesToMatchingSpeakerName() {
+    @Test("Matching speaker name applies")
+    func appliesToMatchingSpeakerName() {
         let rule = VolumeRule(speakerName: "Kitchen")
-        let speaker = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
-
-        XCTAssertTrue(rule.appliesTo(speaker))
+        #expect(rule.appliesTo(kitchen))
     }
 
-    func testAppliesToGroupMemberByGroupId() {
-        let kitchen = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
-        let livingRoom = Speaker(ip: "1.2.3.5", name: "Living Room", udn: "speaker-living")
+    @Test("Group targeting by group ID applies to all members")
+    func appliesToGroupMemberByGroupId() {
         let group = SpeakerGroup(
             groupId: "group-1",
             coordinatorName: "Kitchen",
             members: [kitchen, livingRoom]
         )
         let rule = VolumeRule(
-            speakerName: "\(groupTargetPrefix)\(group.displayName)",
+            speakerName: "\(VolumeRule.groupTargetPrefix)\(group.displayName)",
             targetGroupId: "group-1"
         )
 
-        XCTAssertTrue(rule.appliesTo(kitchen, groups: [group]))
-        XCTAssertTrue(rule.appliesTo(livingRoom, groups: [group]))
+        #expect(rule.appliesTo(kitchen, groups: [group]))
+        #expect(rule.appliesTo(livingRoom, groups: [group]))
     }
 
-    func testDoesNotApplyToSpeakerOutsideGroupById() {
-        let kitchen = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
-        let livingRoom = Speaker(ip: "1.2.3.5", name: "Living Room", udn: "speaker-living")
-        let office = Speaker(ip: "1.2.3.6", name: "Office", udn: "speaker-office")
+    @Test("Group targeting does not apply to speakers outside the group")
+    func doesNotApplyToSpeakerOutsideGroupById() {
         let group = SpeakerGroup(
             groupId: "group-1",
             coordinatorName: "Kitchen",
             members: [kitchen, livingRoom]
         )
         let rule = VolumeRule(
-            speakerName: "\(groupTargetPrefix)\(group.displayName)",
+            speakerName: "\(VolumeRule.groupTargetPrefix)\(group.displayName)",
             targetGroupId: "group-1"
         )
 
-        XCTAssertFalse(rule.appliesTo(office, groups: [group]))
+        #expect(!rule.appliesTo(office, groups: [group]))
     }
 
-    func testAppliesToGroupMemberByDisplayNameFallback() {
-        let kitchen = Speaker(ip: "1.2.3.4", name: "Kitchen", udn: "speaker-kitchen")
-        let livingRoom = Speaker(ip: "1.2.3.5", name: "Living Room", udn: "speaker-living")
+    @Test("Legacy rules fall back to display name matching")
+    func appliesToGroupMemberByDisplayNameFallback() {
         let group = SpeakerGroup(
             groupId: "group-1",
             coordinatorName: "Kitchen",
             members: [kitchen, livingRoom]
         )
-        // Legacy rule without targetGroupId — falls back to display name matching
-        let rule = VolumeRule(speakerName: "\(groupTargetPrefix)\(group.displayName)")
+        let rule = VolumeRule(speakerName: "\(VolumeRule.groupTargetPrefix)\(group.displayName)")
 
-        XCTAssertTrue(rule.appliesTo(kitchen, groups: [group]))
+        #expect(rule.appliesTo(kitchen, groups: [group]))
+    }
+}
+
+@Suite("TransportState")
+struct TransportStateTests {
+    @Test("Parses PLAYING state")
+    func parsesPlaying() {
+        #expect(TransportState(raw: "PLAYING") == .playing)
+        #expect(TransportState(raw: "PLAYING").isPlaying)
+    }
+
+    @Test("Parses PAUSED_PLAYBACK state")
+    func parsesPaused() {
+        #expect(TransportState(raw: "PAUSED_PLAYBACK") == .paused)
+        #expect(!TransportState(raw: "PAUSED_PLAYBACK").isPlaying)
+    }
+
+    @Test("Parses STOPPED and empty as stopped")
+    func parsesStopped() {
+        #expect(TransportState(raw: "STOPPED") == .stopped)
+        #expect(TransportState(raw: "") == .stopped)
+    }
+
+    @Test("Parses TRANSITIONING state")
+    func parsesTransitioning() {
+        #expect(TransportState(raw: "TRANSITIONING") == .transitioning)
+    }
+
+    @Test("Unknown strings produce .unknown")
+    func parsesUnknown() {
+        #expect(TransportState(raw: "SOMETHING_ELSE") == .unknown)
+    }
+}
+
+@Suite("StatusResponse Convenience")
+struct StatusResponseTests {
+    @Test("nowPlayingText formats artist and title")
+    func nowPlayingFormatting() {
+        let response = StatusResponse(
+            device: nil,
+            transport: nil,
+            volume: 50,
+            mute: false,
+            nowPlaying: StatusResponse.NowPlaying(
+                title: "Song",
+                artist: "Artist",
+                album: nil,
+                itemClass: nil
+            )
+        )
+        #expect(response.nowPlayingText == "Artist – Song")
+    }
+
+    @Test("nowPlayingText returns empty when nil")
+    func nowPlayingNil() {
+        let response = StatusResponse(
+            device: nil,
+            transport: nil,
+            volume: nil,
+            mute: nil,
+            nowPlaying: nil
+        )
+        #expect(response.nowPlayingText == "")
+    }
+
+    @Test("transportState parses from nested transport info")
+    func transportStateParsing() {
+        let response = StatusResponse(
+            device: nil,
+            transport: StatusResponse.TransportInfo(state: "PLAYING"),
+            volume: nil,
+            mute: nil,
+            nowPlaying: nil
+        )
+        #expect(response.transportState == .playing)
     }
 }
