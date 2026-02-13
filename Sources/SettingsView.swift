@@ -1,37 +1,36 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(ScheduleEngine.self) private var engine
-    @Environment(SettingsStore.self) private var settings
-
     @State private var selectedTab = 0
-    @State private var cliStatus: String = ""
-    @State private var isInstalling = false
 
     var body: some View {
-        @Bindable var settings = settings
-
         TabView(selection: $selectedTab) {
-            volumeRulesTab(settings: $settings)
+            VolumeRulesTab()
                 .tabItem { Label("Volume Caps", systemImage: "speaker.wave.2") }
                 .tag(0)
 
-            autoStopTab(settings: $settings)
+            AutoStopTab()
                 .tabItem { Label("Auto-Stop", systemImage: "moon") }
                 .tag(1)
 
-            generalTab(settings: $settings)
+            GeneralTab()
                 .tabItem { Label("General", systemImage: "gear") }
                 .tag(2)
         }
         .padding()
         .frame(minWidth: 500, minHeight: 500)
-        .onAppear { checkCLI() }
     }
+}
 
-    // MARK: - Volume Rules Tab
+// MARK: - Volume Rules Tab
 
-    private func volumeRulesTab(settings: Bindable<SettingsStore>) -> some View {
+private struct VolumeRulesTab: View {
+    @Environment(ScheduleEngine.self) private var engine
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Volume Cap Rules")
@@ -60,10 +59,17 @@ struct SettingsView: View {
             .listStyle(.bordered)
         }
     }
+}
 
-    // MARK: - Auto-Stop Tab
+// MARK: - Auto-Stop Tab
 
-    private func autoStopTab(settings: Bindable<SettingsStore>) -> some View {
+private struct AutoStopTab: View {
+    @Environment(ScheduleEngine.self) private var engine
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Auto-Stop Rules")
@@ -92,10 +98,19 @@ struct SettingsView: View {
             .listStyle(.bordered)
         }
     }
+}
 
-    // MARK: - General Tab
+// MARK: - General Tab
 
-    private func generalTab(settings: Bindable<SettingsStore>) -> some View {
+private struct GeneralTab: View {
+    @Environment(SettingsStore.self) private var settings
+
+    @State private var cliStatus: String = ""
+    @State private var isInstalling = false
+
+    var body: some View {
+        @Bindable var settings = settings
+
         Form {
             Section("Polling") {
                 HStack {
@@ -149,9 +164,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { checkCLI() }
     }
-
-    // MARK: - CLI helpers
 
     private func checkCLI() {
         if let path = settings.resolvedCLIPath() {

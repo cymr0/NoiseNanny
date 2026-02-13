@@ -2,7 +2,11 @@ import Foundation
 
 /// Async wrapper around the sonos CLI binary.
 actor SonosCLI {
-    private let settings = SettingsStore.shared
+    private let settings: SettingsStore
+
+    init(settings: SettingsStore = .shared) {
+        self.settings = settings
+    }
 
     private func binaryPath() throws -> String {
         guard let path = settings.resolvedCLIPath() else {

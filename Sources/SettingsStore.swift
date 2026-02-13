@@ -1,8 +1,10 @@
 import Foundation
 import Observation
+import os
 
 @Observable
 final class SettingsStore {
+    private static let logger = Logger(subsystem: "com.noisenanny.app", category: "SettingsStore")
     static let shared = SettingsStore()
 
     private enum Keys {
@@ -48,7 +50,7 @@ final class SettingsStore {
             let data = try JSONEncoder().encode(value)
             UserDefaults.standard.set(data, forKey: key)
         } catch {
-            print("NoiseNanny: Failed to save \(key): \(error.localizedDescription)")
+            Self.logger.error("Failed to save \(key): \(error.localizedDescription)")
         }
     }
 

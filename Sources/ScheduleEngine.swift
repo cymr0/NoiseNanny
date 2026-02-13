@@ -1,20 +1,27 @@
 import Foundation
+import os
 
 /// Timer-based engine that polls speakers and enforces volume caps + auto-stop rules.
 @Observable
 @MainActor
 final class ScheduleEngine {
     private static let maxLogEntries = 50
+    private static let logger = Logger(subsystem: "com.noisenanny.app", category: "ScheduleEngine")
 
-    let cli = SonosCLI()
-    let settings = SettingsStore.shared
+    private let cli: SonosCLI
+    private let settings: SettingsStore
 
-    var speakers: [Speaker] = []
-    var groups: [SpeakerGroup] = []
-    var lastPollTime: Date?
-    var lastError: String?
-    var isPolling = false
-    var enforcementLog: [LogEntry] = []
+    init(cli: SonosCLI = SonosCLI(), settings: SettingsStore = .shared) {
+        self.cli = cli
+        self.settings = settings
+    }
+
+    private(set) var speakers: [Speaker] = []
+    private(set) var groups: [SpeakerGroup] = []
+    private(set) var lastPollTime: Date?
+    private(set) var lastError: String?
+    private(set) var isPolling = false
+    private(set) var enforcementLog: [LogEntry] = []
 
     struct LogEntry: Identifiable, Sendable {
         let id = UUID()
@@ -98,7 +105,7 @@ final class ScheduleEngine {
 
     // MARK: - Poll & Enforce
 
-    func pollAndEnforce() async {
+    private func pollAndEnforce() async {
         guard !isPolling else { return }
         isPolling = true
         defer { isPolling = false }
@@ -201,6 +208,7 @@ final class ScheduleEngine {
     // MARK: - Logging
 
     private func log(_ message: String) {
+        Self.logger.info("\(message)")
         let entry = LogEntry(time: Date(), message: message)
         enforcementLog.insert(entry, at: 0)
         if enforcementLog.count > Self.maxLogEntries {

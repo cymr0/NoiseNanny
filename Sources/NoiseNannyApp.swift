@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import os
 
 /// Small helper that hides the dock icon as soon as the app finishes launching.
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -10,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct NoiseNannyApp: App {
+    private static let logger = Logger(subsystem: "com.noisenanny.app", category: "App")
+
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var engine = ScheduleEngine()
     @State private var hasBootstrapped = false
@@ -39,6 +42,7 @@ struct NoiseNannyApp: App {
                 .environment(SettingsStore.shared)
         }
         .defaultSize(width: 520, height: 560)
+        .keyboardShortcut(",", modifiers: .command)
     }
 
     private var menuBarIcon: String {
@@ -52,10 +56,10 @@ struct NoiseNannyApp: App {
         if SettingsStore.shared.resolvedCLIPath() == nil {
             do {
                 let version = try await CLIInstaller.shared.install()
-                print("NoiseNanny: Installed sonoscli \(version)")
+                Self.logger.info("Installed sonoscli \(version)")
             } catch {
-                print("NoiseNanny: CLI not found and auto-install failed: \(error.localizedDescription)")
-                print("NoiseNanny: Install manually: brew install steipete/tap/sonoscli")
+                Self.logger.warning("CLI not found and auto-install failed: \(error.localizedDescription)")
+                Self.logger.info("Install manually: brew install steipete/tap/sonoscli")
             }
         }
         engine.start()
