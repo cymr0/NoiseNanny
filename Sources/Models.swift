@@ -27,6 +27,17 @@ enum TransportState: String, Sendable {
     }
 
     var isPlaying: Bool { self == .playing }
+
+    /// Human-readable label for VoiceOver.
+    var accessibilityLabel: String {
+        switch self {
+        case .playing: "Playing"
+        case .paused: "Paused"
+        case .stopped: "Stopped"
+        case .transitioning: "Loading"
+        case .unknown: "Stopped"
+        }
+    }
 }
 
 // MARK: - Speaker

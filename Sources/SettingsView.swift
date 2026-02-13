@@ -246,10 +246,12 @@ struct VolumeRuleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Toggle("", isOn: $rule.enabled)
+                Toggle("Enabled", isOn: $rule.enabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .accessibilityLabel("Rule enabled")
+                    .accessibilityHint("Toggles this volume cap rule on or off")
 
                 RuleTargetPicker(
                     speakerName: $rule.speakerName,
@@ -263,6 +265,8 @@ struct VolumeRuleEditor: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Delete rule")
+                .accessibilityHint("Permanently removes this volume cap rule")
             }
 
             HStack {
@@ -271,16 +275,19 @@ struct VolumeRuleEditor: View {
                     get: { Double(rule.maxVolume) },
                     set: { rule.maxVolume = Int($0) }
                 ), in: 0...100, step: 5)
+                .accessibilityLabel("Maximum volume")
+                .accessibilityValue("\(rule.maxVolume) percent")
                 Text("\(rule.maxVolume)%")
                     .font(.system(.body, design: .monospaced))
                     .frame(width: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
 
             HStack {
                 Text("From")
-                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute)
+                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute, label: "Start time")
                 Text("to")
-                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute)
+                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute, label: "End time")
             }
         }
         .padding(.vertical, 4)
@@ -296,10 +303,12 @@ struct AutoStopRuleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Toggle("", isOn: $rule.enabled)
+                Toggle("Enabled", isOn: $rule.enabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .accessibilityLabel("Rule enabled")
+                    .accessibilityHint("Toggles this auto-stop rule on or off")
 
                 RuleTargetPicker(
                     speakerName: $rule.speakerName,
@@ -313,13 +322,15 @@ struct AutoStopRuleEditor: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Delete rule")
+                .accessibilityHint("Permanently removes this auto-stop rule")
             }
 
             HStack {
                 Text("Quiet from")
-                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute)
+                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute, label: "Quiet start time")
                 Text("to")
-                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute)
+                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute, label: "Quiet end time")
             }
         }
         .padding(.vertical, 4)
@@ -332,6 +343,7 @@ struct AutoStopRuleEditor: View {
 struct TimePickerCompact: View {
     @Binding var hour: Int
     @Binding var minute: Int
+    var label: String = "Time"
 
     var body: some View {
         HStack(spacing: 2) {
@@ -342,8 +354,11 @@ struct TimePickerCompact: View {
             }
             .frame(width: 55)
             .labelsHidden()
+            .accessibilityLabel("\(label) hour")
+            .accessibilityValue(String(format: "%02d", hour))
 
             Text(":")
+                .accessibilityHidden(true)
 
             Picker("", selection: $minute) {
                 ForEach([0, 15, 30, 45], id: \.self) { m in
@@ -352,6 +367,8 @@ struct TimePickerCompact: View {
             }
             .frame(width: 55)
             .labelsHidden()
+            .accessibilityLabel("\(label) minute")
+            .accessibilityValue(String(format: "%02d", minute))
         }
     }
 }

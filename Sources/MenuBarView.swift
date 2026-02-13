@@ -185,6 +185,7 @@ struct SpeakerRow: View {
                         Image(systemName: speaker.transportState.icon)
                             .foregroundStyle(speaker.transportState.color)
                             .font(.caption)
+                            .accessibilityHidden(true)
                         Text(speaker.name)
                             .font(.system(.body, weight: .medium))
                     }
@@ -204,11 +205,12 @@ struct SpeakerRow: View {
                         Image(systemName: "speaker.slash.fill")
                             .font(.caption2)
                             .foregroundStyle(.red)
+                            .accessibilityHidden(true)
                     }
                 }
             }
 
-            // Volume bar
+            // Volume bar — purely visual, represented by the composite label below
             GeometryReader { geo in
                 Capsule()
                     .fill(Color.primary.opacity(0.08))
@@ -219,10 +221,21 @@ struct SpeakerRow: View {
                     }
             }
             .frame(height: 3)
+            .accessibilityHidden(true)
         }
         .padding(.leading, indented ? 24 : 12)
         .padding(.trailing, 12)
         .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(speakerAccessibilityLabel)
+        .accessibilityValue("\(speaker.volume) percent")
+    }
+
+    private var speakerAccessibilityLabel: String {
+        var parts = [speaker.name, speaker.transportState.accessibilityLabel]
+        if speaker.mute { parts.append("Muted") }
+        if !speaker.nowPlaying.isEmpty { parts.append(speaker.nowPlaying) }
+        return parts.joined(separator: ", ")
     }
 
     private var volumeColor: Color {
