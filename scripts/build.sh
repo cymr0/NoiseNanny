@@ -22,6 +22,7 @@ mkdir -p "$CONTENTS/MacOS"
 mkdir -p "$CONTENTS/Resources"
 
 cp "$BINARY" "$CONTENTS/MacOS/$APP_NAME"
+cp "Sources/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
 # Info.plist — LSUIElement hides from dock
 cat > "$CONTENTS/Info.plist" << 'PLIST'
@@ -41,6 +42,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "NoiseNanny",
-            path: "Sources"
+            path: "Sources",
+            exclude: ["Resources"]
         ),
         .testTarget(
             name: "NoiseNannyTests",
