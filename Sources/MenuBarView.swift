@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(ScheduleEngine.self) private var engine
-    @State private var settingsWindow: NSWindow?
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -34,10 +34,13 @@ struct MenuBarView: View {
                             Image(systemName: "rectangle.3.group")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                             Text(group.displayName)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Speaker group: \(group.displayName)")
                         .padding(.horizontal, 12)
                         .padding(.top, 6)
                         .padding(.bottom, 2)
@@ -112,23 +115,9 @@ struct MenuBarView: View {
                 Task { await engine.refreshSpeakers() }
             }
 
-            MenuActionRow(label: "Settings…", systemImage: "gear") {
+            MenuActionRow(label: "Settings\u{2026}", systemImage: "gear") {
                 NSApp.activate(ignoringOtherApps: true)
-                if let window = settingsWindow {
-                    window.makeKeyAndOrderFront(nil)
-                } else {
-                    let settingsView = SettingsView()
-                        .environment(engine)
-                    let controller = NSHostingController(rootView: settingsView)
-                    let window = NSWindow(contentViewController: controller)
-                    window.title = "NoiseNanny Settings"
-                    window.styleMask = [.titled, .closable, .resizable]
-                    window.setContentSize(NSSize(width: 520, height: 560))
-                    window.isReleasedWhenClosed = false
-                    window.center()
-                    window.makeKeyAndOrderFront(nil)
-                    settingsWindow = window
-                }
+                openWindow(id: "settings")
             }
 
             Divider()

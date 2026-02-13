@@ -18,6 +18,7 @@ struct NoiseNannyApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environment(engine)
+                .environment(SettingsStore.shared)
                 .onAppear {
                     Task { await engine.refreshSpeakers() }
                 }
@@ -31,6 +32,13 @@ struct NoiseNannyApp: App {
                 }
         }
         .menuBarExtraStyle(.window)
+
+        Window("NoiseNanny Settings", id: "settings") {
+            SettingsView()
+                .environment(engine)
+                .environment(SettingsStore.shared)
+        }
+        .defaultSize(width: 520, height: 560)
     }
 
     private var menuBarIcon: String {

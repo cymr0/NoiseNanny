@@ -2,23 +2,25 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(ScheduleEngine.self) private var engine
-    let settings = SettingsStore.shared
+    @Environment(SettingsStore.self) private var settings
 
     @State private var selectedTab = 0
     @State private var cliStatus: String = ""
     @State private var isInstalling = false
 
     var body: some View {
+        @Bindable var settings = settings
+
         TabView(selection: $selectedTab) {
-            volumeRulesTab
+            volumeRulesTab(settings: $settings)
                 .tabItem { Label("Volume Caps", systemImage: "speaker.wave.2") }
                 .tag(0)
 
-            autoStopTab
+            autoStopTab(settings: $settings)
                 .tabItem { Label("Auto-Stop", systemImage: "moon") }
                 .tag(1)
 
-            generalTab
+            generalTab(settings: $settings)
                 .tabItem { Label("General", systemImage: "gear") }
                 .tag(2)
         }
@@ -29,14 +31,14 @@ struct SettingsView: View {
 
     // MARK: - Volume Rules Tab
 
-    private var volumeRulesTab: some View {
+    private func volumeRulesTab(settings: Bindable<SettingsStore>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Volume Cap Rules")
                     .font(.headline)
                 Spacer()
                 Button {
-                    settings.volumeRules.append(VolumeRule())
+                    self.settings.volumeRules.append(VolumeRule())
                 } label: {
                     Label("Add Rule", systemImage: "plus")
                 }
@@ -47,17 +49,12 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.volumeRules) { rule in
-                    if let idx = settings.volumeRules.firstIndex(where: { $0.id == rule.id }) {
-                        VolumeRuleEditor(
-                            rule: Binding(
-                                get: { settings.volumeRules[idx] },
-                                set: { settings.volumeRules[idx] = $0 }
-                            ),
-                            targets: engine.allTargets,
-                            onDelete: { settings.volumeRules.removeAll { $0.id == rule.id } }
-                        )
-                    }
+                ForEach(settings.$volumeRules) { $rule in
+                    VolumeRuleEditor(
+                        rule: $rule,
+                        targets: engine.allTargets,
+                        onDelete: { self.settings.volumeRules.removeAll { $0.id == rule.id } }
+                    )
                 }
             }
             .listStyle(.bordered)
@@ -66,14 +63,14 @@ struct SettingsView: View {
 
     // MARK: - Auto-Stop Tab
 
-    private var autoStopTab: some View {
+    private func autoStopTab(settings: Bindable<SettingsStore>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Auto-Stop Rules")
                     .font(.headline)
                 Spacer()
                 Button {
-                    settings.autoStopRules.append(AutoStopRule())
+                    self.settings.autoStopRules.append(AutoStopRule())
                 } label: {
                     Label("Add Rule", systemImage: "plus")
                 }
@@ -84,17 +81,12 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.autoStopRules) { rule in
-                    if let idx = settings.autoStopRules.firstIndex(where: { $0.id == rule.id }) {
-                        AutoStopRuleEditor(
-                            rule: Binding(
-                                get: { settings.autoStopRules[idx] },
-                                set: { settings.autoStopRules[idx] = $0 }
-                            ),
-                            targets: engine.allTargets,
-                            onDelete: { settings.autoStopRules.removeAll { $0.id == rule.id } }
-                        )
-                    }
+                ForEach(settings.$autoStopRules) { $rule in
+                    AutoStopRuleEditor(
+                        rule: $rule,
+                        targets: engine.allTargets,
+                        onDelete: { self.settings.autoStopRules.removeAll { $0.id == rule.id } }
+                    )
                 }
             }
             .listStyle(.bordered)
@@ -103,20 +95,16 @@ struct SettingsView: View {
 
     // MARK: - General Tab
 
-    private var generalTab: some View {
+    private func generalTab(settings: Bindable<SettingsStore>) -> some View {
         Form {
             Section("Polling") {
                 HStack {
                     Text("Poll interval:")
-                    TextField(
-                        "",
-                        value: Binding(
-                            get: { settings.pollInterval },
-                            set: { settings.pollInterval = max(5, $0) }
-                        ),
-                        format: .number
-                    )
-                    .frame(width: 60)
+                    TextField("", value: settings.$pollInterval, format: .number)
+                        .frame(width: 60)
+                        .onChange(of: self.settings.pollInterval) { _, newValue in
+                            if newValue < 5 { self.settings.pollInterval = 5 }
+                        }
                     Text("seconds")
                         .foregroundStyle(.secondary)
                 }
@@ -125,8 +113,8 @@ struct SettingsView: View {
             Section("CLI Binary") {
                 HStack {
                     Text("Path:")
-                    Text(settings.resolvedCLIPath() ?? "Not found")
-                        .foregroundStyle(settings.resolvedCLIPath() != nil ? Color.primary : Color.red)
+                    Text(self.settings.resolvedCLIPath() ?? "Not found")
+                        .foregroundStyle(self.settings.resolvedCLIPath() != nil ? Color.primary : Color.red)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -138,7 +126,7 @@ struct SettingsView: View {
                 }
 
                 HStack {
-                    Button(settings.resolvedCLIPath() != nil ? "Reinstall from GitHub" : "Install from GitHub") {
+                    Button(self.settings.resolvedCLIPath() != nil ? "Reinstall from GitHub" : "Install from GitHub") {
                         installCLI()
                     }
                     .disabled(isInstalling)
@@ -212,7 +200,6 @@ struct SettingsView: View {
 
 // MARK: - Rule Target Picker (shared between both editors)
 
-/// Reusable target picker that handles the speaker/group selection and syncs the `targetGroupId`.
 private struct RuleTargetPicker: View {
     @Binding var speakerName: String
     @Binding var targetGroupId: String?
