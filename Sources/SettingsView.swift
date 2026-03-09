@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -7,6 +8,7 @@ struct SettingsView: View {
     @State private var selectedTab = 0
     @State private var cliStatus: String = ""
     @State private var isInstalling = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -153,6 +155,22 @@ struct SettingsView: View {
                     }
                     .disabled(isInstalling)
                 }
+            }
+
+            Section("Startup") {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            print("NoiseNanny: Failed to update login item: \(error.localizedDescription)")
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
             }
 
             Section("About") {
