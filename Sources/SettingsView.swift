@@ -233,7 +233,7 @@ struct SettingsView: View {
     private func checkForAppUpdate() {
         isCheckingAppUpdate = true
         appUpdateStatus = ""
-        Task {
+        Task { @MainActor in
             do {
                 if let update = try await AppUpdateChecker.shared.checkForUpdate() {
                     engine.availableUpdate = update
@@ -259,7 +259,7 @@ struct SettingsView: View {
 
     private func checkCLI() {
         if let path = settings.resolvedCLIPath() {
-            Task {
+            Task { @MainActor in
                 let ver = await CLIInstaller.shared.installedVersion()
                 cliStatus = ver ?? "Installed at \(path)"
             }
@@ -270,7 +270,7 @@ struct SettingsView: View {
 
     private func installCLI() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let version = try await CLIInstaller.shared.install()
                 cliStatus = "Installed \(version)"
@@ -283,13 +283,14 @@ struct SettingsView: View {
 
     private func checkForUpdate() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let release = try await CLIInstaller.shared.latestRelease()
                 let current = await CLIInstaller.shared.installedVersion() ?? ""
                 let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
                 let localVer = CLIInstaller.extractSemanticVersion(current)
-                if remoteVer != localVer && !remoteVer.isEmpty {
+                if !remoteVer.isEmpty,
+                   AppUpdateChecker.isNewer(remote: remoteVer, local: localVer) {
                     cliStatus = "Updating to \(release.tagName)…"
                     let version = try await CLIInstaller.shared.install()
                     cliStatus = "Updated to \(version)"

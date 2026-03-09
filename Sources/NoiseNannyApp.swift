@@ -56,7 +56,8 @@ struct NoiseNannyApp: App {
                 let current = await CLIInstaller.shared.installedVersion() ?? ""
                 let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
                 let localVer = CLIInstaller.extractSemanticVersion(current)
-                if remoteVer != localVer && !remoteVer.isEmpty {
+                if !remoteVer.isEmpty,
+                   AppUpdateChecker.isNewer(remote: remoteVer, local: localVer) {
                     let version = try await CLIInstaller.shared.install()
                     print("NoiseNanny: Auto-updated sonoscli to \(version)")
                 }

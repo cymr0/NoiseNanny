@@ -33,6 +33,19 @@ actor AppUpdateChecker {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
     }
 
+    /// Extracts the `NoiseNanny.zip` download URL from a GitHub release JSON `assets` array.
+    /// Extracted as a pure helper for testability.
+    static func downloadURL(fromAssets assets: [[String: Any]]?) -> URL? {
+        guard let assets else { return nil }
+        for asset in assets {
+            if let name = asset["name"] as? String, name == "NoiseNanny.zip",
+               let urlString = asset["browser_download_url"] as? String {
+                return URL(string: urlString)
+            }
+        }
+        return nil
+    }
+
     /// Checks GitHub for a newer release. Returns `UpdateInfo` if one exists, nil if up to date.
     /// Throws on network or API errors so callers can distinguish failure from "no update".
     func checkForUpdate() async throws -> UpdateInfo? {
@@ -62,31 +75,30 @@ actor AppUpdateChecker {
             return nil
         }
 
-        // Find the NoiseNanny.zip asset download URL
-        var zipURL: URL?
-        if let assets = json["assets"] as? [[String: Any]] {
-            for asset in assets {
-                if let name = asset["name"] as? String, name == "NoiseNanny.zip",
-                   let urlString = asset["browser_download_url"] as? String {
-                    zipURL = URL(string: urlString)
-                    break
-                }
-            }
-        }
+        let zipURL = Self.downloadURL(fromAssets: json["assets"] as? [[String: Any]])
 
         return UpdateInfo(tagName: tagName, htmlURL: htmlURL, downloadURL: zipURL)
     }
 
     enum InstallError: LocalizedError {
         case noDownloadAsset
+        case downloadFailed(statusCode: Int)
         case extractionFailed
+        case extractionTimedOut
         case appNotFound
+        case replaceFailed(underlying: String)
+        case relaunchFailed
 
         var errorDescription: String? {
             switch self {
             case .noDownloadAsset: return "No NoiseNanny.zip asset found in release."
+            case .downloadFailed(let code): return "Download failed with HTTP \(code)."
             case .extractionFailed: return "Failed to extract the app update."
+            case .extractionTimedOut: return "Extraction timed out."
             case .appNotFound: return "NoiseNanny.app not found in archive."
+            case .replaceFailed(let detail):
+                return "Failed to replace app bundle. Manual recovery may be needed — check for a .bak file in the app's parent directory. (\(detail))"
+            case .relaunchFailed: return "Updated app could not be launched. Please open NoiseNanny manually."
             }
         }
     }
@@ -97,16 +109,38 @@ actor AppUpdateChecker {
             throw InstallError.noDownloadAsset
         }
 
-        let (tempURL, _) = try await URLSession.shared.download(from: downloadURL)
+        // Download and validate HTTP response
+        let (tempURL, downloadResponse) = try await URLSession.shared.download(from: downloadURL)
+        if let httpResponse = downloadResponse as? HTTPURLResponse,
+           !(200...299).contains(httpResponse.statusCode) {
+            try? FileManager.default.removeItem(at: tempURL)
+            throw InstallError.downloadFailed(statusCode: httpResponse.statusCode)
+        }
+
         let extractDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
 
-        // Unzip
+        // Ensure temp artifacts are cleaned up on all paths
+        defer {
+            if let err = Result(catching: { try FileManager.default.removeItem(at: tempURL) }).failure {
+                print("NoiseNanny: Failed to clean up temp download: \(err.localizedDescription)")
+            }
+            if let err = Result(catching: { try FileManager.default.removeItem(at: extractDir) }).failure {
+                print("NoiseNanny: Failed to clean up extraction dir: \(err.localizedDescription)")
+            }
+        }
+
+        // Unzip using async-safe wait with timeout (same pattern as CLIInstaller)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         process.arguments = ["-q", tempURL.path, "-d", extractDir.path]
         try process.run()
-        process.waitUntilExit()
+
+        let timedOut = await waitForExit(process, timeout: 30)
+        if timedOut {
+            process.terminate()
+            throw InstallError.extractionTimedOut
+        }
 
         guard process.terminationStatus == 0 else {
             throw InstallError.extractionFailed
@@ -130,25 +164,60 @@ actor AppUpdateChecker {
         do {
             try FileManager.default.copyItem(at: extractedApp, to: currentAppURL)
         } catch {
-            // Restore backup on failure
-            try? FileManager.default.moveItem(at: backupURL, to: currentAppURL)
+            // Attempt restore — if this also fails, throw a dedicated error with recovery instructions
+            do {
+                try FileManager.default.moveItem(at: backupURL, to: currentAppURL)
+            } catch let restoreError {
+                throw InstallError.replaceFailed(
+                    underlying: "Copy failed: \(error.localizedDescription). "
+                    + "Restore also failed: \(restoreError.localizedDescription). "
+                    + "Backup is at: \(backupURL.path)"
+                )
+            }
             throw error
         }
 
-        // Cleanup
+        // Clean up backup after successful copy
         try? FileManager.default.removeItem(at: backupURL)
-        try? FileManager.default.removeItem(at: tempURL)
-        try? FileManager.default.removeItem(at: extractDir)
 
-        // Relaunch
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-n", currentAppURL.path]
-        try? task.run()
+        // Relaunch — only terminate if the new app actually launches
+        let launcher = Process()
+        launcher.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        launcher.arguments = ["-n", currentAppURL.path]
+        try launcher.run()
+        launcher.waitUntilExit()
 
-        // Terminate current instance after a short delay to let the new one start
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        guard launcher.terminationStatus == 0 else {
+            throw InstallError.relaunchFailed
+        }
+
+        await MainActor.run {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    // MARK: - Process helper
+
+    /// Waits for a process to exit without blocking the cooperative thread pool.
+    /// Returns true if the process timed out.
+    private func waitForExit(_ process: Process, timeout: TimeInterval = 30) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    DispatchQueue.global().async {
+                        process.waitUntilExit()
+                        continuation.resume()
+                    }
+                }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(timeout))
+                return true
+            }
+            let first = await group.next()!
+            group.cancelAll()
+            return first
         }
     }
 
@@ -163,5 +232,14 @@ actor AppUpdateChecker {
             if rv < lv { return false }
         }
         return false
+    }
+}
+
+private extension Result where Failure == any Error {
+    var failure: Failure? {
+        switch self {
+        case .success: return nil
+        case .failure(let err): return err
+        }
     }
 }

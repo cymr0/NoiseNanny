@@ -80,4 +80,46 @@ final class AppUpdateCheckerTests: XCTestCase {
         // No x.y.z match — returns the trimmed input as-is
         XCTAssertEqual(CLIInstaller.extractSemanticVersion("latest"), "latest")
     }
+
+    // MARK: - downloadURL(fromAssets:)
+
+    func testDownloadURLFindsNoiseNannyZip() {
+        let assets: [[String: Any]] = [
+            ["name": "sonoscli-darwin-arm64.tar.gz", "browser_download_url": "https://example.com/cli.tar.gz"],
+            ["name": "NoiseNanny.zip", "browser_download_url": "https://example.com/NoiseNanny.zip"],
+        ]
+        let url = AppUpdateChecker.downloadURL(fromAssets: assets)
+        XCTAssertEqual(url?.absoluteString, "https://example.com/NoiseNanny.zip")
+    }
+
+    func testDownloadURLReturnsNilWhenAssetMissing() {
+        let assets: [[String: Any]] = [
+            ["name": "sonoscli-darwin-arm64.tar.gz", "browser_download_url": "https://example.com/cli.tar.gz"],
+        ]
+        XCTAssertNil(AppUpdateChecker.downloadURL(fromAssets: assets))
+    }
+
+    func testDownloadURLReturnsNilForNilAssets() {
+        XCTAssertNil(AppUpdateChecker.downloadURL(fromAssets: nil))
+    }
+
+    func testDownloadURLReturnsNilForEmptyAssets() {
+        XCTAssertNil(AppUpdateChecker.downloadURL(fromAssets: []))
+    }
+
+    func testDownloadURLReturnsNilForInvalidURL() {
+        let assets: [[String: Any]] = [
+            ["name": "NoiseNanny.zip", "browser_download_url": ""],
+        ]
+        // Empty string produces nil URL
+        XCTAssertNil(AppUpdateChecker.downloadURL(fromAssets: assets))
+    }
+
+    func testDownloadURLIgnoresSimilarlyNamedAssets() {
+        let assets: [[String: Any]] = [
+            ["name": "NoiseNanny.zip.sha256", "browser_download_url": "https://example.com/sha"],
+            ["name": "NoiseNanny-debug.zip", "browser_download_url": "https://example.com/debug"],
+        ]
+        XCTAssertNil(AppUpdateChecker.downloadURL(fromAssets: assets))
+    }
 }
