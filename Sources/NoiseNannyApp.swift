@@ -49,6 +49,20 @@ struct NoiseNannyApp: App {
                 print("NoiseNanny: CLI not found and auto-install failed: \(error.localizedDescription)")
                 print("NoiseNanny: Install manually: brew install steipete/tap/sonoscli")
             }
+        } else {
+            // Auto-upgrade installed CLI if a newer version is available
+            do {
+                let release = try await CLIInstaller.shared.latestRelease()
+                let current = await CLIInstaller.shared.installedVersion() ?? ""
+                let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
+                let localVer = CLIInstaller.extractSemanticVersion(current)
+                if remoteVer != localVer && !remoteVer.isEmpty {
+                    let version = try await CLIInstaller.shared.install()
+                    print("NoiseNanny: Auto-updated sonoscli to \(version)")
+                }
+            } catch {
+                print("NoiseNanny: CLI update check failed: \(error.localizedDescription)")
+            }
         }
         engine.start()
 

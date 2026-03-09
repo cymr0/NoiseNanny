@@ -285,12 +285,14 @@ struct SettingsView: View {
                 let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
                 let localVer = CLIInstaller.extractSemanticVersion(current)
                 if remoteVer != localVer && !remoteVer.isEmpty {
-                    cliStatus = "Update available: \(release.tagName) (current: \(current))"
+                    cliStatus = "Updating to \(release.tagName)…"
+                    let version = try await CLIInstaller.shared.install()
+                    cliStatus = "Updated to \(version)"
                 } else {
                     cliStatus = "Up to date (\(release.tagName))"
                 }
             } catch {
-                cliStatus = "Check failed: \(error.localizedDescription)"
+                cliStatus = "Update failed: \(error.localizedDescription)"
             }
             isInstalling = false
         }
