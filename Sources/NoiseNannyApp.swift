@@ -68,9 +68,15 @@ struct NoiseNannyApp: App {
 
         if SettingsStore.shared.checkForUpdates {
             do {
-                engine.availableUpdate = try await AppUpdateChecker.shared.checkForUpdate()
+                if let update = try await AppUpdateChecker.shared.checkForUpdate() {
+                    engine.availableUpdate = update
+                    if update.downloadURL != nil {
+                        print("NoiseNanny: Auto-updating app to \(update.tagName)…")
+                        try await AppUpdateChecker.shared.installUpdate(update)
+                    }
+                }
             } catch {
-                print("NoiseNanny: Update check failed: \(error.localizedDescription)")
+                print("NoiseNanny: App update failed: \(error.localizedDescription)")
             }
         }
     }

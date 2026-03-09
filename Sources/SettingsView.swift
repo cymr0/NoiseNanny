@@ -237,14 +237,19 @@ struct SettingsView: View {
             do {
                 if let update = try await AppUpdateChecker.shared.checkForUpdate() {
                     engine.availableUpdate = update
-                    appUpdateStatus = ""
+                    if update.downloadURL != nil {
+                        appUpdateStatus = "Installing \(update.tagName)…"
+                        try await AppUpdateChecker.shared.installUpdate(update)
+                    } else {
+                        appUpdateStatus = "Update available but no download asset found"
+                    }
                 } else {
                     engine.availableUpdate = nil
                     let version = await AppUpdateChecker.shared.currentVersion
                     appUpdateStatus = "Up to date (v\(version))"
                 }
             } catch {
-                appUpdateStatus = "Update check failed: \(error.localizedDescription)"
+                appUpdateStatus = "Update failed: \(error.localizedDescription)"
             }
             isCheckingAppUpdate = false
         }
