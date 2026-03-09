@@ -56,7 +56,7 @@ actor AppUpdateChecker {
         let localVersion = CLIInstaller.extractSemanticVersion(currentVersion)
 
         guard !remoteVersion.isEmpty, remoteVersion != localVersion,
-              isNewer(remote: remoteVersion, local: localVersion) else {
+              Self.isNewer(remote: remoteVersion, local: localVersion) else {
             return nil
         }
 
