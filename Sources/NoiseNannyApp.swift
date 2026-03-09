@@ -51,5 +51,13 @@ struct NoiseNannyApp: App {
             }
         }
         engine.start()
+
+        if SettingsStore.shared.checkForUpdates {
+            do {
+                engine.availableUpdate = try await AppUpdateChecker.shared.checkForUpdate()
+            } catch {
+                print("NoiseNanny: Update check failed: \(error.localizedDescription)")
+            }
+        }
     }
 }

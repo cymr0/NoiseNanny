@@ -15,6 +15,7 @@ final class ScheduleEngine {
     var lastError: String?
     var isPolling = false
     var enforcementLog: [LogEntry] = []
+    var availableUpdate: AppUpdateChecker.UpdateInfo?
 
     struct LogEntry: Identifiable {
         let id = UUID()

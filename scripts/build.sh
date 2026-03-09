@@ -7,7 +7,25 @@ APP_DIR="$BUILD_DIR/$APP_NAME.app"
 CONTENTS="$APP_DIR/Contents"
 INSTALL_DIR="/Applications"
 
-echo "Building $APP_NAME..."
+# Parse arguments
+VERSION=""
+INSTALL=false
+for arg in "$@"; do
+    case "$arg" in
+        --install) INSTALL=true ;;
+        v*) VERSION="${arg#v}" ;;
+        [0-9]*) VERSION="$arg" ;;
+    esac
+done
+
+if [ -z "$VERSION" ]; then
+    echo "Usage: bash scripts/build.sh <version> [--install]"
+    echo "  e.g. bash scripts/build.sh 1.2.0"
+    echo "       bash scripts/build.sh v1.2.0 --install"
+    exit 1
+fi
+
+echo "Building $APP_NAME v$VERSION..."
 swift build -c release 2>&1
 
 BINARY="$BUILD_DIR/release/$APP_NAME"
@@ -25,7 +43,7 @@ cp "$BINARY" "$CONTENTS/MacOS/$APP_NAME"
 cp "Sources/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
 # Info.plist — LSUIElement hides from dock
-cat > "$CONTENTS/Info.plist" << 'PLIST'
+cat > "$CONTENTS/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -39,9 +57,9 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundleDisplayName</key>
     <string>NoiseNanny</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
@@ -67,7 +85,7 @@ ZIP_PATH="$BUILD_DIR/$APP_NAME.zip"
 echo "Release zip created at $ZIP_PATH"
 
 # Optionally install to /Applications
-if [ "${1:-}" = "--install" ]; then
+if [ "$INSTALL" = true ]; then
     echo "Installing to $INSTALL_DIR..."
     rm -rf "$INSTALL_DIR/$APP_NAME.app"
     cp -R "$APP_DIR" "$INSTALL_DIR/"
@@ -78,4 +96,4 @@ echo ""
 echo "Done."
 echo "  Run locally:    open $APP_DIR"
 echo "  Release zip:    $ZIP_PATH"
-echo "  Create release: gh release create v1.0 $ZIP_PATH --title 'v1.0'"
+echo "  Create release: gh release create v${VERSION} $ZIP_PATH --title 'v${VERSION}'"

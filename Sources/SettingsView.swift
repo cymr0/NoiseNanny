@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -7,6 +8,10 @@ struct SettingsView: View {
     @State private var selectedTab = 0
     @State private var cliStatus: String = ""
     @State private var isInstalling = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var appUpdateStatus: String = ""
+    @State private var isCheckingAppUpdate = false
+    @State private var loginItemError: String = ""
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -155,12 +160,94 @@ struct SettingsView: View {
                 }
             }
 
+            Section("App Updates") {
+                Toggle("Check for updates on launch", isOn: Binding(
+                    get: { settings.checkForUpdates },
+                    set: { settings.checkForUpdates = $0 }
+                ))
+
+                if !appUpdateStatus.isEmpty {
+                    Text(appUpdateStatus)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let update = engine.availableUpdate {
+                    HStack {
+                        Label("New version: \(update.tagName)", systemImage: "arrow.down.circle")
+                            .foregroundStyle(.blue)
+                        Spacer()
+                        Button("View Release") {
+                            if let url = URL(string: update.htmlURL) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Check Now") {
+                        checkForAppUpdate()
+                    }
+                    .disabled(isCheckingAppUpdate)
+
+                    if isCheckingAppUpdate {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            }
+
+            Section("Startup") {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                            loginItemError = ""
+                        } catch {
+                            loginItemError = "Failed to update login item: \(error.localizedDescription)"
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
+
+                if !loginItemError.isEmpty {
+                    Text(loginItemError)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            }
+
             Section("About") {
                 Text("NoiseNanny — Sonos volume enforcer")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - App update helpers
+
+    private func checkForAppUpdate() {
+        isCheckingAppUpdate = true
+        appUpdateStatus = ""
+        Task {
+            do {
+                if let update = try await AppUpdateChecker.shared.checkForUpdate() {
+                    engine.availableUpdate = update
+                    appUpdateStatus = ""
+                } else {
+                    engine.availableUpdate = nil
+                    let version = await AppUpdateChecker.shared.currentVersion
+                    appUpdateStatus = "Up to date (v\(version))"
+                }
+            } catch {
+                appUpdateStatus = "Update check failed: \(error.localizedDescription)"
+            }
+            isCheckingAppUpdate = false
+        }
     }
 
     // MARK: - CLI helpers
