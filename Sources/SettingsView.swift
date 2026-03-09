@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var appUpdateStatus: String = ""
     @State private var isCheckingAppUpdate = false
+    @State private var loginItemError: String = ""
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -205,11 +206,18 @@ struct SettingsView: View {
                             } else {
                                 try SMAppService.mainApp.unregister()
                             }
+                            loginItemError = ""
                         } catch {
-                            print("NoiseNanny: Failed to update login item: \(error.localizedDescription)")
+                            loginItemError = "Failed to update login item: \(error.localizedDescription)"
                             launchAtLogin = SMAppService.mainApp.status == .enabled
                         }
                     }
+
+                if !loginItemError.isEmpty {
+                    Text(loginItemError)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
             }
 
             Section("About") {
@@ -226,13 +234,17 @@ struct SettingsView: View {
         isCheckingAppUpdate = true
         appUpdateStatus = ""
         Task {
-            if let update = await AppUpdateChecker.shared.checkForUpdate() {
-                engine.availableUpdate = update
-                appUpdateStatus = ""
-            } else {
-                engine.availableUpdate = nil
-                let version = await AppUpdateChecker.shared.currentVersion
-                appUpdateStatus = "Up to date (v\(version))"
+            do {
+                if let update = try await AppUpdateChecker.shared.checkForUpdate() {
+                    engine.availableUpdate = update
+                    appUpdateStatus = ""
+                } else {
+                    engine.availableUpdate = nil
+                    let version = await AppUpdateChecker.shared.currentVersion
+                    appUpdateStatus = "Up to date (v\(version))"
+                }
+            } catch {
+                appUpdateStatus = "Update check failed: \(error.localizedDescription)"
             }
             isCheckingAppUpdate = false
         }

@@ -12,43 +12,59 @@ actor AppUpdateChecker {
         let htmlURL: String
     }
 
+    enum UpdateError: LocalizedError {
+        case httpError(statusCode: Int)
+        case invalidResponse
+
+        var errorDescription: String? {
+            switch self {
+            case .httpError(let code):
+                return "GitHub API returned HTTP \(code)"
+            case .invalidResponse:
+                return "Unexpected response format from GitHub"
+            }
+        }
+    }
+
     /// Returns the current app version from the main bundle's CFBundleShortVersionString.
     var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
     }
 
-    /// Checks GitHub for a newer release. Returns `UpdateInfo` if one exists, nil otherwise.
-    func checkForUpdate() async -> UpdateInfo? {
+    /// Checks GitHub for a newer release. Returns `UpdateInfo` if one exists, nil if up to date.
+    /// Throws on network or API errors so callers can distinguish failure from "no update".
+    func checkForUpdate() async throws -> UpdateInfo? {
         let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest")!
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
 
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String,
-                  let htmlURL = json["html_url"] as? String else {
-                return nil
-            }
+        let (data, response) = try await URLSession.shared.data(for: request)
 
-            let remoteVersion = CLIInstaller.extractSemanticVersion(tagName)
-            let localVersion = CLIInstaller.extractSemanticVersion(currentVersion)
+        if let httpResponse = response as? HTTPURLResponse,
+           !(200...299).contains(httpResponse.statusCode) {
+            throw UpdateError.httpError(statusCode: httpResponse.statusCode)
+        }
 
-            guard !remoteVersion.isEmpty, remoteVersion != localVersion,
-                  isNewer(remote: remoteVersion, local: localVersion) else {
-                return nil
-            }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tagName = json["tag_name"] as? String,
+              let htmlURL = json["html_url"] as? String else {
+            throw UpdateError.invalidResponse
+        }
 
-            return UpdateInfo(tagName: tagName, htmlURL: htmlURL)
-        } catch {
-            print("NoiseNanny: Update check failed: \(error.localizedDescription)")
+        let remoteVersion = CLIInstaller.extractSemanticVersion(tagName)
+        let localVersion = CLIInstaller.extractSemanticVersion(currentVersion)
+
+        guard !remoteVersion.isEmpty, remoteVersion != localVersion,
+              isNewer(remote: remoteVersion, local: localVersion) else {
             return nil
         }
+
+        return UpdateInfo(tagName: tagName, htmlURL: htmlURL)
     }
 
     /// Simple semver comparison: returns true if remote > local.
-    private func isNewer(remote: String, local: String) -> Bool {
+    static func isNewer(remote: String, local: String) -> Bool {
         let r = remote.split(separator: ".").compactMap { Int($0) }
         let l = local.split(separator: ".").compactMap { Int($0) }
         for i in 0..<max(r.count, l.count) {
