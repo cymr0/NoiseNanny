@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var cliStatus: String = ""
     @State private var isInstalling = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var appUpdateStatus: String = ""
+    @State private var isCheckingAppUpdate = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -157,6 +159,43 @@ struct SettingsView: View {
                 }
             }
 
+            Section("App Updates") {
+                Toggle("Check for updates on launch", isOn: Binding(
+                    get: { settings.checkForUpdates },
+                    set: { settings.checkForUpdates = $0 }
+                ))
+
+                if !appUpdateStatus.isEmpty {
+                    Text(appUpdateStatus)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let update = engine.availableUpdate {
+                    HStack {
+                        Label("New version: \(update.tagName)", systemImage: "arrow.down.circle")
+                            .foregroundStyle(.blue)
+                        Spacer()
+                        Button("View Release") {
+                            if let url = URL(string: update.htmlURL) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Check Now") {
+                        checkForAppUpdate()
+                    }
+                    .disabled(isCheckingAppUpdate)
+
+                    if isCheckingAppUpdate {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            }
+
             Section("Startup") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
@@ -179,6 +218,24 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - App update helpers
+
+    private func checkForAppUpdate() {
+        isCheckingAppUpdate = true
+        appUpdateStatus = ""
+        Task {
+            if let update = await AppUpdateChecker.shared.checkForUpdate() {
+                engine.availableUpdate = update
+                appUpdateStatus = ""
+            } else {
+                engine.availableUpdate = nil
+                let version = await AppUpdateChecker.shared.currentVersion
+                appUpdateStatus = "Up to date (v\(version))"
+            }
+            isCheckingAppUpdate = false
+        }
     }
 
     // MARK: - CLI helpers

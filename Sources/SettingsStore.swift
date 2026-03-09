@@ -9,6 +9,7 @@ final class SettingsStore {
     private let autoStopKey = "autoStopRules"
     private let pollIntervalKey = "pollInterval"
     private let cliPathKey = "cliPath"
+    private let checkForUpdatesKey = "checkForUpdates"
 
     var volumeRules: [VolumeRule] {
         didSet { save(volumeRules, forKey: rulesKey) }
@@ -26,12 +27,23 @@ final class SettingsStore {
         didSet { UserDefaults.standard.set(cliPath, forKey: cliPathKey) }
     }
 
+    var checkForUpdates: Bool {
+        didSet { UserDefaults.standard.set(checkForUpdates, forKey: checkForUpdatesKey) }
+    }
+
     private init() {
         // Must initialize all stored properties before using self
         let interval = UserDefaults.standard.double(forKey: pollIntervalKey)
         self.pollInterval = interval >= 5 ? interval : 30
 
         self.cliPath = UserDefaults.standard.string(forKey: cliPathKey) ?? ""
+
+        // Default to true if never set
+        if UserDefaults.standard.object(forKey: checkForUpdatesKey) == nil {
+            self.checkForUpdates = true
+        } else {
+            self.checkForUpdates = UserDefaults.standard.bool(forKey: checkForUpdatesKey)
+        }
 
         if let data = UserDefaults.standard.data(forKey: rulesKey),
            let decoded = try? JSONDecoder().decode([VolumeRule].self, from: data) {

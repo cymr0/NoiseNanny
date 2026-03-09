@@ -51,5 +51,9 @@ struct NoiseNannyApp: App {
             }
         }
         engine.start()
+
+        if SettingsStore.shared.checkForUpdates {
+            engine.availableUpdate = await AppUpdateChecker.shared.checkForUpdate()
+        }
     }
 }
