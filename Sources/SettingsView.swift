@@ -233,18 +233,23 @@ struct SettingsView: View {
     private func checkForAppUpdate() {
         isCheckingAppUpdate = true
         appUpdateStatus = ""
-        Task {
+        Task { @MainActor in
             do {
                 if let update = try await AppUpdateChecker.shared.checkForUpdate() {
                     engine.availableUpdate = update
-                    appUpdateStatus = ""
+                    if update.downloadURL != nil {
+                        appUpdateStatus = "Installing \(update.tagName)…"
+                        try await AppUpdateChecker.shared.installUpdate(update)
+                    } else {
+                        appUpdateStatus = "Update available but no download asset found"
+                    }
                 } else {
                     engine.availableUpdate = nil
                     let version = await AppUpdateChecker.shared.currentVersion
                     appUpdateStatus = "Up to date (v\(version))"
                 }
             } catch {
-                appUpdateStatus = "Update check failed: \(error.localizedDescription)"
+                appUpdateStatus = "Update failed: \(error.localizedDescription)"
             }
             isCheckingAppUpdate = false
         }
@@ -254,7 +259,7 @@ struct SettingsView: View {
 
     private func checkCLI() {
         if let path = settings.resolvedCLIPath() {
-            Task {
+            Task { @MainActor in
                 let ver = await CLIInstaller.shared.installedVersion()
                 cliStatus = ver ?? "Installed at \(path)"
             }
@@ -265,7 +270,7 @@ struct SettingsView: View {
 
     private func installCLI() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let version = try await CLIInstaller.shared.install()
                 cliStatus = "Installed \(version)"
@@ -278,19 +283,22 @@ struct SettingsView: View {
 
     private func checkForUpdate() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let release = try await CLIInstaller.shared.latestRelease()
                 let current = await CLIInstaller.shared.installedVersion() ?? ""
                 let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
                 let localVer = CLIInstaller.extractSemanticVersion(current)
-                if remoteVer != localVer && !remoteVer.isEmpty {
-                    cliStatus = "Update available: \(release.tagName) (current: \(current))"
+                if !remoteVer.isEmpty,
+                   AppUpdateChecker.isNewer(remote: remoteVer, local: localVer) {
+                    cliStatus = "Updating to \(release.tagName)…"
+                    let version = try await CLIInstaller.shared.install()
+                    cliStatus = "Updated to \(version)"
                 } else {
                     cliStatus = "Up to date (\(release.tagName))"
                 }
             } catch {
-                cliStatus = "Check failed: \(error.localizedDescription)"
+                cliStatus = "Update failed: \(error.localizedDescription)"
             }
             isInstalling = false
         }
