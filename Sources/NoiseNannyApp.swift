@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import os
 
 /// Small helper that hides the dock icon as soon as the app finishes launching.
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -10,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct NoiseNannyApp: App {
+    private static let logger = Logger(subsystem: "com.noisenanny.app", category: "App")
+
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var engine = ScheduleEngine()
     @State private var hasBootstrapped = false
@@ -18,6 +21,7 @@ struct NoiseNannyApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environment(engine)
+                .environment(SettingsStore.shared)
                 .onAppear {
                     Task { await engine.refreshSpeakers() }
                 }
@@ -31,6 +35,14 @@ struct NoiseNannyApp: App {
                 }
         }
         .menuBarExtraStyle(.window)
+
+        Window("NoiseNanny Settings", id: "settings") {
+            SettingsView()
+                .environment(engine)
+                .environment(SettingsStore.shared)
+        }
+        .defaultSize(width: 520, height: 560)
+        .keyboardShortcut(",", modifiers: .command)
     }
 
     private var menuBarIcon: String {
@@ -44,10 +56,10 @@ struct NoiseNannyApp: App {
         if SettingsStore.shared.resolvedCLIPath() == nil {
             do {
                 let version = try await CLIInstaller.shared.install()
-                print("NoiseNanny: Installed sonoscli \(version)")
+                Self.logger.info("Installed sonoscli \(version)")
             } catch {
-                print("NoiseNanny: CLI not found and auto-install failed: \(error.localizedDescription)")
-                print("NoiseNanny: Install manually: brew install steipete/tap/sonoscli")
+                Self.logger.warning("CLI not found and auto-install failed: \(error.localizedDescription)")
+                Self.logger.info("Install manually: brew install steipete/tap/sonoscli")
             }
         } else {
             // Auto-upgrade installed CLI if a newer version is available
@@ -59,10 +71,10 @@ struct NoiseNannyApp: App {
                 if !remoteVer.isEmpty,
                    AppUpdateChecker.isNewer(remote: remoteVer, local: localVer) {
                     let version = try await CLIInstaller.shared.install()
-                    print("NoiseNanny: Auto-updated sonoscli to \(version)")
+                    Self.logger.info("Auto-updated sonoscli to \(version)")
                 }
             } catch {
-                print("NoiseNanny: CLI update check failed: \(error.localizedDescription)")
+                Self.logger.warning("CLI update check failed: \(error.localizedDescription)")
             }
         }
         engine.start()
@@ -72,12 +84,12 @@ struct NoiseNannyApp: App {
                 if let update = try await AppUpdateChecker.shared.checkForUpdate() {
                     engine.availableUpdate = update
                     if update.downloadURL != nil {
-                        print("NoiseNanny: Auto-updating app to \(update.tagName)…")
+                        Self.logger.info("Auto-updating app to \(update.tagName)…")
                         try await AppUpdateChecker.shared.installUpdate(update)
                     }
                 }
             } catch {
-                print("NoiseNanny: App update failed: \(error.localizedDescription)")
+                Self.logger.warning("App update check failed: \(error.localizedDescription)")
             }
         }
     }

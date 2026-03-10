@@ -136,7 +136,7 @@ actor AppUpdateChecker {
         process.arguments = ["-q", tempURL.path, "-d", extractDir.path]
         try process.run()
 
-        let timedOut = await waitForExit(process, timeout: 30)
+        let timedOut = await ProcessRunner.runAndWait(process, timeout: 30)
         if timedOut {
             process.terminate()
             throw InstallError.extractionTimedOut
@@ -193,31 +193,6 @@ actor AppUpdateChecker {
 
         await MainActor.run {
             NSApplication.shared.terminate(nil)
-        }
-    }
-
-    // MARK: - Process helper
-
-    /// Waits for a process to exit without blocking the cooperative thread pool.
-    /// Returns true if the process timed out.
-    private func waitForExit(_ process: Process, timeout: TimeInterval = 30) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    DispatchQueue.global().async {
-                        process.waitUntilExit()
-                        continuation.resume()
-                    }
-                }
-                return false
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(timeout))
-                return true
-            }
-            let first = await group.next()!
-            group.cancelAll()
-            return first
         }
     }
 

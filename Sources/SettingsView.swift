@@ -2,39 +2,36 @@ import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(ScheduleEngine.self) private var engine
-    let settings = SettingsStore.shared
-
     @State private var selectedTab = 0
-    @State private var cliStatus: String = ""
-    @State private var isInstalling = false
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var appUpdateStatus: String = ""
-    @State private var isCheckingAppUpdate = false
-    @State private var loginItemError: String = ""
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            volumeRulesTab
+            VolumeRulesTab()
                 .tabItem { Label("Volume Caps", systemImage: "speaker.wave.2") }
                 .tag(0)
 
-            autoStopTab
+            AutoStopTab()
                 .tabItem { Label("Auto-Stop", systemImage: "moon") }
                 .tag(1)
 
-            generalTab
+            GeneralTab()
                 .tabItem { Label("General", systemImage: "gear") }
                 .tag(2)
         }
         .padding()
         .frame(minWidth: 500, minHeight: 500)
-        .onAppear { checkCLI() }
     }
+}
 
-    // MARK: - Volume Rules Tab
+// MARK: - Volume Rules Tab
 
-    private var volumeRulesTab: some View {
+private struct VolumeRulesTab: View {
+    @Environment(ScheduleEngine.self) private var engine
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        let bindableSettings = Bindable(settings)
+
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Volume Cap Rules")
@@ -52,26 +49,28 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.volumeRules) { rule in
-                    if let idx = settings.volumeRules.firstIndex(where: { $0.id == rule.id }) {
-                        VolumeRuleEditor(
-                            rule: Binding(
-                                get: { settings.volumeRules[idx] },
-                                set: { settings.volumeRules[idx] = $0 }
-                            ),
-                            targets: engine.allTargets,
-                            onDelete: { settings.volumeRules.removeAll { $0.id == rule.id } }
-                        )
-                    }
+                ForEach(bindableSettings.volumeRules) { $rule in
+                    VolumeRuleEditor(
+                        rule: $rule,
+                        targets: engine.allTargets,
+                        onDelete: { settings.volumeRules.removeAll { $0.id == rule.id } }
+                    )
                 }
             }
             .listStyle(.bordered)
         }
     }
+}
 
-    // MARK: - Auto-Stop Tab
+// MARK: - Auto-Stop Tab
 
-    private var autoStopTab: some View {
+private struct AutoStopTab: View {
+    @Environment(ScheduleEngine.self) private var engine
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        let bindableSettings = Bindable(settings)
+
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Auto-Stop Rules")
@@ -89,39 +88,44 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.autoStopRules) { rule in
-                    if let idx = settings.autoStopRules.firstIndex(where: { $0.id == rule.id }) {
-                        AutoStopRuleEditor(
-                            rule: Binding(
-                                get: { settings.autoStopRules[idx] },
-                                set: { settings.autoStopRules[idx] = $0 }
-                            ),
-                            targets: engine.allTargets,
-                            onDelete: { settings.autoStopRules.removeAll { $0.id == rule.id } }
-                        )
-                    }
+                ForEach(bindableSettings.autoStopRules) { $rule in
+                    AutoStopRuleEditor(
+                        rule: $rule,
+                        targets: engine.allTargets,
+                        onDelete: { settings.autoStopRules.removeAll { $0.id == rule.id } }
+                    )
                 }
             }
             .listStyle(.bordered)
         }
     }
+}
 
-    // MARK: - General Tab
+// MARK: - General Tab
 
-    private var generalTab: some View {
+private struct GeneralTab: View {
+    @Environment(ScheduleEngine.self) private var engine
+    @Environment(SettingsStore.self) private var settings
+
+    @State private var cliStatus: String = ""
+    @State private var isInstalling = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var appUpdateStatus: String = ""
+    @State private var isCheckingAppUpdate = false
+    @State private var loginItemError: String = ""
+
+    var body: some View {
+        let bindableSettings = Bindable(settings)
+
         Form {
             Section("Polling") {
                 HStack {
                     Text("Poll interval:")
-                    TextField(
-                        "",
-                        value: Binding(
-                            get: { settings.pollInterval },
-                            set: { settings.pollInterval = max(5, $0) }
-                        ),
-                        format: .number
-                    )
-                    .frame(width: 60)
+                    TextField("", value: bindableSettings.pollInterval, format: .number)
+                        .frame(width: 60)
+                        .onChange(of: settings.pollInterval) { _, newValue in
+                            if newValue < 5 { settings.pollInterval = 5 }
+                        }
                     Text("seconds")
                         .foregroundStyle(.secondary)
                 }
@@ -226,6 +230,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { checkCLI() }
     }
 
     // MARK: - App update helpers
@@ -305,6 +310,31 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Rule Target Picker (shared between both editors)
+
+private struct RuleTargetPicker: View {
+    @Binding var speakerName: String
+    @Binding var targetGroupId: String?
+    let targets: [RuleTarget]
+
+    var body: some View {
+        Picker("Target:", selection: $speakerName) {
+            Text("All Speakers").tag("")
+            if !speakerName.isEmpty,
+               !targets.contains(where: { $0.speakerName == speakerName }) {
+                Text(speakerName).tag(speakerName)
+            }
+            ForEach(targets) { target in
+                Text(target.label).tag(target.speakerName)
+            }
+        }
+        .frame(maxWidth: 180)
+        .onChange(of: speakerName) { _, newValue in
+            targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
+        }
+    }
+}
+
 // MARK: - Rule Editors
 
 struct VolumeRuleEditor: View {
@@ -315,34 +345,27 @@ struct VolumeRuleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Toggle("", isOn: $rule.enabled)
+                Toggle("Enabled", isOn: $rule.enabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .accessibilityLabel("Rule enabled")
+                    .accessibilityHint("Toggles this volume cap rule on or off")
 
-                Picker("Target:", selection: $rule.speakerName) {
-                    Text("All Speakers").tag("")
-                    if !rule.speakerName.isEmpty,
-                       !targets.contains(where: { $0.speakerName == rule.speakerName }) {
-                        Text(rule.speakerName).tag(rule.speakerName)
-                    }
-                    ForEach(targets) { target in
-                        Text(target.label).tag(target.speakerName)
-                    }
-                }
-                .frame(maxWidth: 180)
-                .onChange(of: rule.speakerName) { _, newValue in
-                    rule.targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
-                }
+                RuleTargetPicker(
+                    speakerName: $rule.speakerName,
+                    targetGroupId: $rule.targetGroupId,
+                    targets: targets
+                )
 
                 Spacer()
 
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Delete rule")
+                .accessibilityHint("Permanently removes this volume cap rule")
             }
 
             HStack {
@@ -351,16 +374,19 @@ struct VolumeRuleEditor: View {
                     get: { Double(rule.maxVolume) },
                     set: { rule.maxVolume = Int($0) }
                 ), in: 0...100, step: 5)
+                .accessibilityLabel("Maximum volume")
+                .accessibilityValue("\(rule.maxVolume) percent")
                 Text("\(rule.maxVolume)%")
                     .font(.system(.body, design: .monospaced))
                     .frame(width: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
 
             HStack {
                 Text("From")
-                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute)
+                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute, label: "Start time")
                 Text("to")
-                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute)
+                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute, label: "End time")
             }
         }
         .padding(.vertical, 4)
@@ -376,41 +402,34 @@ struct AutoStopRuleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Toggle("", isOn: $rule.enabled)
+                Toggle("Enabled", isOn: $rule.enabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .accessibilityLabel("Rule enabled")
+                    .accessibilityHint("Toggles this auto-stop rule on or off")
 
-                Picker("Target:", selection: $rule.speakerName) {
-                    Text("All Speakers").tag("")
-                    if !rule.speakerName.isEmpty,
-                       !targets.contains(where: { $0.speakerName == rule.speakerName }) {
-                        Text(rule.speakerName).tag(rule.speakerName)
-                    }
-                    ForEach(targets) { target in
-                        Text(target.label).tag(target.speakerName)
-                    }
-                }
-                .frame(maxWidth: 180)
-                .onChange(of: rule.speakerName) { _, newValue in
-                    rule.targetGroupId = targets.first { $0.speakerName == newValue }?.groupId
-                }
+                RuleTargetPicker(
+                    speakerName: $rule.speakerName,
+                    targetGroupId: $rule.targetGroupId,
+                    targets: targets
+                )
 
                 Spacer()
 
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Delete rule")
+                .accessibilityHint("Permanently removes this auto-stop rule")
             }
 
             HStack {
                 Text("Quiet from")
-                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute)
+                TimePickerCompact(hour: $rule.startHour, minute: $rule.startMinute, label: "Quiet start time")
                 Text("to")
-                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute)
+                TimePickerCompact(hour: $rule.endHour, minute: $rule.endMinute, label: "Quiet end time")
             }
         }
         .padding(.vertical, 4)
@@ -418,9 +437,12 @@ struct AutoStopRuleEditor: View {
     }
 }
 
+// MARK: - Time Picker
+
 struct TimePickerCompact: View {
     @Binding var hour: Int
     @Binding var minute: Int
+    var label: String = "Time"
 
     var body: some View {
         HStack(spacing: 2) {
@@ -431,8 +453,11 @@ struct TimePickerCompact: View {
             }
             .frame(width: 55)
             .labelsHidden()
+            .accessibilityLabel("\(label) hour")
+            .accessibilityValue(String(format: "%02d", hour))
 
             Text(":")
+                .accessibilityHidden(true)
 
             Picker("", selection: $minute) {
                 ForEach([0, 15, 30, 45], id: \.self) { m in
@@ -441,6 +466,8 @@ struct TimePickerCompact: View {
             }
             .frame(width: 55)
             .labelsHidden()
+            .accessibilityLabel("\(label) minute")
+            .accessibilityValue(String(format: "%02d", minute))
         }
     }
 }

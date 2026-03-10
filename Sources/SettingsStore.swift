@@ -1,63 +1,60 @@
 import Foundation
-import SwiftUI
+import Observation
+import os
 
 @Observable
 final class SettingsStore {
+    private static let logger = Logger(subsystem: "com.noisenanny.app", category: "SettingsStore")
     static let shared = SettingsStore()
 
-    private let rulesKey = "volumeRules"
-    private let autoStopKey = "autoStopRules"
-    private let pollIntervalKey = "pollInterval"
-    private let cliPathKey = "cliPath"
-    private let checkForUpdatesKey = "checkForUpdates"
+    private enum Keys {
+        static let volumeRules = "volumeRules"
+        static let autoStopRules = "autoStopRules"
+        static let pollInterval = "pollInterval"
+        static let cliPath = "cliPath"
+        static let checkForUpdates = "checkForUpdates"
+    }
 
     var volumeRules: [VolumeRule] {
-        didSet { save(volumeRules, forKey: rulesKey) }
+        didSet { save(volumeRules, forKey: Keys.volumeRules) }
     }
 
     var autoStopRules: [AutoStopRule] {
-        didSet { save(autoStopRules, forKey: autoStopKey) }
+        didSet { save(autoStopRules, forKey: Keys.autoStopRules) }
     }
 
     var pollInterval: TimeInterval {
-        didSet { UserDefaults.standard.set(pollInterval, forKey: pollIntervalKey) }
+        didSet { UserDefaults.standard.set(pollInterval, forKey: Keys.pollInterval) }
     }
 
     var cliPath: String {
-        didSet { UserDefaults.standard.set(cliPath, forKey: cliPathKey) }
+        didSet { UserDefaults.standard.set(cliPath, forKey: Keys.cliPath) }
     }
 
     var checkForUpdates: Bool {
-        didSet { UserDefaults.standard.set(checkForUpdates, forKey: checkForUpdatesKey) }
+        didSet { UserDefaults.standard.set(checkForUpdates, forKey: Keys.checkForUpdates) }
     }
 
     private init() {
-        // Must initialize all stored properties before using self
-        let interval = UserDefaults.standard.double(forKey: pollIntervalKey)
+        let interval = UserDefaults.standard.double(forKey: Keys.pollInterval)
         self.pollInterval = interval >= 5 ? interval : 30
-
-        self.cliPath = UserDefaults.standard.string(forKey: cliPathKey) ?? ""
+        self.cliPath = UserDefaults.standard.string(forKey: Keys.cliPath) ?? ""
+        self.volumeRules = Self.load(forKey: Keys.volumeRules) ?? []
+        self.autoStopRules = Self.load(forKey: Keys.autoStopRules) ?? []
 
         // Default to true if never set
-        if UserDefaults.standard.object(forKey: checkForUpdatesKey) == nil {
+        if UserDefaults.standard.object(forKey: Keys.checkForUpdates) == nil {
             self.checkForUpdates = true
         } else {
-            self.checkForUpdates = UserDefaults.standard.bool(forKey: checkForUpdatesKey)
+            self.checkForUpdates = UserDefaults.standard.bool(forKey: Keys.checkForUpdates)
         }
+    }
 
-        if let data = UserDefaults.standard.data(forKey: rulesKey),
-           let decoded = try? JSONDecoder().decode([VolumeRule].self, from: data) {
-            self.volumeRules = decoded
-        } else {
-            self.volumeRules = []
-        }
+    // MARK: - Persistence helpers
 
-        if let data = UserDefaults.standard.data(forKey: autoStopKey),
-           let decoded = try? JSONDecoder().decode([AutoStopRule].self, from: data) {
-            self.autoStopRules = decoded
-        } else {
-            self.autoStopRules = []
-        }
+    private static func load<T: Decodable>(forKey key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
     }
 
     private func save<T: Encodable>(_ value: T, forKey key: String) {
@@ -65,11 +62,12 @@ final class SettingsStore {
             let data = try JSONEncoder().encode(value)
             UserDefaults.standard.set(data, forKey: key)
         } catch {
-            print("NoiseNanny: Failed to save \(key): \(error.localizedDescription)")
+            Self.logger.error("Failed to save \(key): \(error.localizedDescription)")
         }
     }
 
-    /// Resolves the CLI binary path. Checks stored path, then common locations.
+    // MARK: - CLI path resolution
+
     func resolvedCLIPath() -> String? {
         let candidates = [
             cliPath,
@@ -93,5 +91,4 @@ final class SettingsStore {
         }
         return appSupport.appendingPathComponent("NoiseNanny/bin/sonos").path
     }
-
 }

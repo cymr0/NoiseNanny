@@ -1,8 +1,48 @@
 import Foundation
 
+// MARK: - Transport State
+
+/// Type-safe representation of Sonos transport states, replacing raw string comparisons.
+enum TransportState: String, Sendable {
+    case playing = "PLAYING"
+    case paused = "PAUSED_PLAYBACK"
+    case stopped = "STOPPED"
+    case transitioning = "TRANSITIONING"
+    case unknown
+
+    /// Parse the state string returned by the CLI, which may vary in casing and format.
+    init(raw: String) {
+        let upper = raw.uppercased()
+        if upper.contains("PLAY") && !upper.contains("PAUSE") {
+            self = .playing
+        } else if upper.contains("PAUSE") {
+            self = .paused
+        } else if upper.contains("TRANSIT") {
+            self = .transitioning
+        } else if upper.contains("STOP") || upper.isEmpty {
+            self = .stopped
+        } else {
+            self = .unknown
+        }
+    }
+
+    var isPlaying: Bool { self == .playing }
+
+    /// Human-readable label for VoiceOver.
+    var accessibilityLabel: String {
+        switch self {
+        case .playing: "Playing"
+        case .paused: "Paused"
+        case .stopped: "Stopped"
+        case .transitioning: "Loading"
+        case .unknown: "Stopped"
+        }
+    }
+}
+
 // MARK: - Speaker
 
-struct Speaker: Identifiable, Codable, Hashable {
+struct Speaker: Identifiable, Codable, Hashable, Sendable {
     var id: String { udn }
     let ip: String
     let name: String
@@ -10,7 +50,7 @@ struct Speaker: Identifiable, Codable, Hashable {
 
     var volume: Int = 0
     var mute: Bool = false
-    var transportState: String = ""
+    var transportState: TransportState = .stopped
     var nowPlaying: String = ""
 
     enum CodingKeys: String, CodingKey {
@@ -26,11 +66,21 @@ struct Speaker: Identifiable, Codable, Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(udn)
     }
+
+    /// Returns a copy with mutable state preserved from an existing snapshot.
+    func preservingState(from existing: Speaker) -> Speaker {
+        var copy = self
+        copy.volume = existing.volume
+        copy.mute = existing.mute
+        copy.transportState = existing.transportState
+        copy.nowPlaying = existing.nowPlaying
+        return copy
+    }
 }
 
 // MARK: - Group / Zone
 
-struct SpeakerGroup: Identifiable {
+struct SpeakerGroup: Identifiable, Sendable {
     var id: String { groupId }
     let groupId: String
     let coordinatorName: String
@@ -48,7 +98,7 @@ struct SpeakerGroup: Identifiable {
 
 // MARK: - Rule target (used by pickers in the settings UI)
 
-struct RuleTarget: Identifiable {
+struct RuleTarget: Identifiable, Sendable {
     var id: String { speakerName }
     let speakerName: String   // value stored in rule.speakerName
     let label: String         // display text for the picker
@@ -57,43 +107,42 @@ struct RuleTarget: Identifiable {
 
 // MARK: - CLI JSON responses
 
-struct DiscoverEntry: Decodable {
+struct DiscoverEntry: Decodable, Sendable {
     let ip: String
     let name: String
     let udn: String
     let location: String?
 }
 
-struct GroupStatusResponse: Decodable {
+struct GroupStatusResponse: Decodable, Sendable {
     let groups: [GroupEntry]
 
-    struct GroupEntry: Decodable {
+    struct GroupEntry: Decodable, Sendable {
         let id: String
         let coordinator: MemberEntry
         let members: [MemberEntry]
     }
 
-    struct MemberEntry: Decodable {
+    struct MemberEntry: Decodable, Sendable {
         let name: String
         let ip: String
         let uuid: String
     }
 }
 
-struct StatusResponse: Decodable {
+struct StatusResponse: Decodable, Sendable {
     let device: DeviceInfo?
     let transport: TransportInfo?
     let volume: Int?
     let mute: Bool?
     let nowPlaying: NowPlaying?
 
-    struct DeviceInfo: Decodable {
+    struct DeviceInfo: Decodable, Sendable {
         let ip: String?
         let name: String?
     }
 
-    struct TransportInfo: Decodable {
-        // Keys are capitalized in the actual JSON
+    struct TransportInfo: Decodable, Sendable {
         let state: String?
 
         enum CodingKeys: String, CodingKey {
@@ -101,11 +150,10 @@ struct StatusResponse: Decodable {
         }
     }
 
-    struct NowPlaying: Decodable {
+    struct NowPlaying: Decodable, Sendable {
         let title: String?
         let artist: String?
         let album: String?
-        // "class" field tells us the type (e.g. "object.item.audioItem.podcast")
         let itemClass: String?
 
         enum CodingKeys: String, CodingKey {
@@ -113,12 +161,20 @@ struct StatusResponse: Decodable {
             case itemClass = "class"
         }
     }
+
+    /// Convenience: parsed transport state.
+    var transportState: TransportState {
+        TransportState(raw: transport?.state ?? "")
+    }
+
+    /// Convenience: formatted "now playing" string.
+    var nowPlayingText: String {
+        guard let np = nowPlaying else { return "" }
+        return [np.artist, np.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " – ")
+    }
 }
 
 // MARK: - Rules
-
-/// Prefix used to distinguish group targets from individual speaker names.
-let groupTargetPrefix = "Group: "
 
 /// Shared logic for time-window rules with speaker targeting.
 protocol ScheduleRule {
@@ -133,6 +189,9 @@ protocol ScheduleRule {
 }
 
 extension ScheduleRule {
+    /// Prefix used to distinguish group targets from individual speaker names.
+    static var groupTargetPrefix: String { "Group: " }
+
     var startTimeString: String {
         String(format: "%02d:%02d", startHour, startMinute)
     }
@@ -165,7 +224,7 @@ extension ScheduleRule {
     func appliesTo(_ speaker: Speaker, groups: [SpeakerGroup] = []) -> Bool {
         if speakerName.isEmpty { return true }
         if speakerName == speaker.name { return true }
-        if speakerName.hasPrefix(groupTargetPrefix) {
+        if speakerName.hasPrefix(Self.groupTargetPrefix) {
             // Prefer stable group ID when available (new rules).
             if let gid = targetGroupId {
                 return groups.contains { g in
@@ -173,7 +232,7 @@ extension ScheduleRule {
                 }
             }
             // Fallback: match by display name (legacy rules without targetGroupId).
-            let groupDisplayName = String(speakerName.dropFirst(groupTargetPrefix.count))
+            let groupDisplayName = String(speakerName.dropFirst(Self.groupTargetPrefix.count))
             return groups.contains { g in
                 g.displayName == groupDisplayName && g.members.contains { $0.udn == speaker.udn }
             }
@@ -182,7 +241,7 @@ extension ScheduleRule {
     }
 }
 
-struct VolumeRule: Identifiable, Codable, Equatable, ScheduleRule {
+struct VolumeRule: Identifiable, Codable, Equatable, ScheduleRule, Sendable {
     let id: UUID
     var speakerName: String          // empty string = all speakers
     var targetGroupId: String?       // stable Sonos group ID (nil for individual / all)
@@ -216,7 +275,7 @@ struct VolumeRule: Identifiable, Codable, Equatable, ScheduleRule {
     }
 }
 
-struct AutoStopRule: Identifiable, Codable, Equatable, ScheduleRule {
+struct AutoStopRule: Identifiable, Codable, Equatable, ScheduleRule, Sendable {
     let id: UUID
     var speakerName: String          // empty = all speakers
     var targetGroupId: String?       // stable Sonos group ID (nil for individual / all)

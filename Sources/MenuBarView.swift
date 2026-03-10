@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(ScheduleEngine.self) private var engine
-    @State private var settingsWindow: NSWindow?
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -48,15 +48,17 @@ struct MenuBarView: View {
             } else {
                 ForEach(engine.groups) { group in
                     if group.members.count > 1 {
-                        // Multi-speaker group — show group header
                         HStack(spacing: 4) {
                             Image(systemName: "rectangle.3.group")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                             Text(group.displayName)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Speaker group: \(group.displayName)")
                         .padding(.horizontal, 12)
                         .padding(.top, 6)
                         .padding(.bottom, 2)
@@ -131,23 +133,9 @@ struct MenuBarView: View {
                 Task { await engine.refreshSpeakers() }
             }
 
-            MenuActionRow(label: "Settings…", systemImage: "gear") {
+            MenuActionRow(label: "Settings\u{2026}", systemImage: "gear") {
                 NSApp.activate(ignoringOtherApps: true)
-                if let window = settingsWindow {
-                    window.makeKeyAndOrderFront(nil)
-                } else {
-                    let settingsView = SettingsView()
-                        .environment(engine)
-                    let controller = NSHostingController(rootView: settingsView)
-                    let window = NSWindow(contentViewController: controller)
-                    window.title = "NoiseNanny Settings"
-                    window.styleMask = [.titled, .closable, .resizable]
-                    window.setContentSize(NSSize(width: 520, height: 560))
-                    window.isReleasedWhenClosed = false
-                    window.center()
-                    window.makeKeyAndOrderFront(nil)
-                    settingsWindow = window
-                }
+                openWindow(id: "settings")
             }
 
             Divider()
@@ -190,6 +178,8 @@ private struct MenuActionRow: View {
     }
 }
 
+// MARK: - Speaker Row
+
 struct SpeakerRow: View {
     let speaker: Speaker
     var indented: Bool = false
@@ -199,9 +189,10 @@ struct SpeakerRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Image(systemName: transportIcon)
-                            .foregroundStyle(transportColor)
+                        Image(systemName: speaker.transportState.icon)
+                            .foregroundStyle(speaker.transportState.color)
                             .font(.caption)
+                            .accessibilityHidden(true)
                         Text(speaker.name)
                             .font(.system(.body, weight: .medium))
                     }
@@ -221,11 +212,12 @@ struct SpeakerRow: View {
                         Image(systemName: "speaker.slash.fill")
                             .font(.caption2)
                             .foregroundStyle(.red)
+                            .accessibilityHidden(true)
                     }
                 }
             }
 
-            // Volume bar
+            // Volume bar — purely visual, represented by the composite label below
             GeometryReader { geo in
                 Capsule()
                     .fill(Color.primary.opacity(0.08))
@@ -236,29 +228,48 @@ struct SpeakerRow: View {
                     }
             }
             .frame(height: 3)
+            .accessibilityHidden(true)
         }
         .padding(.leading, indented ? 24 : 12)
         .padding(.trailing, 12)
         .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(speakerAccessibilityLabel)
+        .accessibilityValue("\(speaker.volume) percent")
     }
 
-    private var transportIcon: String {
-        let state = speaker.transportState.uppercased()
-        if state.contains("PAUSE") { return "pause.fill" }
-        if state.contains("PLAY") { return "play.fill" }
-        return "stop.fill"
-    }
-
-    private var transportColor: Color {
-        let state = speaker.transportState.uppercased()
-        if state.contains("PAUSE") { return .orange }
-        if state.contains("PLAY") { return .green }
-        return .secondary
+    private var speakerAccessibilityLabel: String {
+        var parts = [speaker.name, speaker.transportState.accessibilityLabel]
+        if speaker.mute { parts.append("Muted") }
+        if !speaker.nowPlaying.isEmpty { parts.append(speaker.nowPlaying) }
+        return parts.joined(separator: ", ")
     }
 
     private var volumeColor: Color {
         if speaker.volume > 80 { return .red }
         if speaker.volume > 50 { return .orange }
         return .primary
+    }
+}
+
+// MARK: - TransportState UI
+
+extension TransportState {
+    var icon: String {
+        switch self {
+        case .playing: "play.fill"
+        case .paused: "pause.fill"
+        case .transitioning: "forward.fill"
+        case .stopped, .unknown: "stop.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .playing: .green
+        case .paused: .orange
+        case .transitioning: .blue
+        case .stopped, .unknown: .secondary
+        }
     }
 }
