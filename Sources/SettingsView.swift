@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -29,7 +30,7 @@ private struct VolumeRulesTab: View {
     @Environment(SettingsStore.self) private var settings
 
     var body: some View {
-        @Bindable var settings = settings
+        let bindableSettings = Bindable(settings)
 
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -37,7 +38,7 @@ private struct VolumeRulesTab: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    self.settings.volumeRules.append(VolumeRule())
+                    settings.volumeRules.append(VolumeRule())
                 } label: {
                     Label("Add Rule", systemImage: "plus")
                 }
@@ -48,11 +49,11 @@ private struct VolumeRulesTab: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.$volumeRules) { $rule in
+                ForEach(bindableSettings.volumeRules) { $rule in
                     VolumeRuleEditor(
                         rule: $rule,
                         targets: engine.allTargets,
-                        onDelete: { self.settings.volumeRules.removeAll { $0.id == rule.id } }
+                        onDelete: { settings.volumeRules.removeAll { $0.id == rule.id } }
                     )
                 }
             }
@@ -68,7 +69,7 @@ private struct AutoStopTab: View {
     @Environment(SettingsStore.self) private var settings
 
     var body: some View {
-        @Bindable var settings = settings
+        let bindableSettings = Bindable(settings)
 
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -76,7 +77,7 @@ private struct AutoStopTab: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    self.settings.autoStopRules.append(AutoStopRule())
+                    settings.autoStopRules.append(AutoStopRule())
                 } label: {
                     Label("Add Rule", systemImage: "plus")
                 }
@@ -87,11 +88,11 @@ private struct AutoStopTab: View {
                 .foregroundStyle(.secondary)
 
             List {
-                ForEach(settings.$autoStopRules) { $rule in
+                ForEach(bindableSettings.autoStopRules) { $rule in
                     AutoStopRuleEditor(
                         rule: $rule,
                         targets: engine.allTargets,
-                        onDelete: { self.settings.autoStopRules.removeAll { $0.id == rule.id } }
+                        onDelete: { settings.autoStopRules.removeAll { $0.id == rule.id } }
                     )
                 }
             }
@@ -103,22 +104,27 @@ private struct AutoStopTab: View {
 // MARK: - General Tab
 
 private struct GeneralTab: View {
+    @Environment(ScheduleEngine.self) private var engine
     @Environment(SettingsStore.self) private var settings
 
     @State private var cliStatus: String = ""
     @State private var isInstalling = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var appUpdateStatus: String = ""
+    @State private var isCheckingAppUpdate = false
+    @State private var loginItemError: String = ""
 
     var body: some View {
-        @Bindable var settings = settings
+        let bindableSettings = Bindable(settings)
 
         Form {
             Section("Polling") {
                 HStack {
                     Text("Poll interval:")
-                    TextField("", value: settings.$pollInterval, format: .number)
+                    TextField("", value: bindableSettings.pollInterval, format: .number)
                         .frame(width: 60)
-                        .onChange(of: self.settings.pollInterval) { _, newValue in
-                            if newValue < 5 { self.settings.pollInterval = 5 }
+                        .onChange(of: settings.pollInterval) { _, newValue in
+                            if newValue < 5 { settings.pollInterval = 5 }
                         }
                     Text("seconds")
                         .foregroundStyle(.secondary)
@@ -128,8 +134,8 @@ private struct GeneralTab: View {
             Section("CLI Binary") {
                 HStack {
                     Text("Path:")
-                    Text(self.settings.resolvedCLIPath() ?? "Not found")
-                        .foregroundStyle(self.settings.resolvedCLIPath() != nil ? Color.primary : Color.red)
+                    Text(settings.resolvedCLIPath() ?? "Not found")
+                        .foregroundStyle(settings.resolvedCLIPath() != nil ? Color.primary : Color.red)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -141,7 +147,7 @@ private struct GeneralTab: View {
                 }
 
                 HStack {
-                    Button(self.settings.resolvedCLIPath() != nil ? "Reinstall from GitHub" : "Install from GitHub") {
+                    Button(settings.resolvedCLIPath() != nil ? "Reinstall from GitHub" : "Install from GitHub") {
                         installCLI()
                     }
                     .disabled(isInstalling)
@@ -158,6 +164,66 @@ private struct GeneralTab: View {
                 }
             }
 
+            Section("App Updates") {
+                Toggle("Check for updates on launch", isOn: Binding(
+                    get: { settings.checkForUpdates },
+                    set: { settings.checkForUpdates = $0 }
+                ))
+
+                if !appUpdateStatus.isEmpty {
+                    Text(appUpdateStatus)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let update = engine.availableUpdate {
+                    HStack {
+                        Label("New version: \(update.tagName)", systemImage: "arrow.down.circle")
+                            .foregroundStyle(.blue)
+                        Spacer()
+                        Button("View Release") {
+                            if let url = URL(string: update.htmlURL) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Check Now") {
+                        checkForAppUpdate()
+                    }
+                    .disabled(isCheckingAppUpdate)
+
+                    if isCheckingAppUpdate {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            }
+
+            Section("Startup") {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                            loginItemError = ""
+                        } catch {
+                            loginItemError = "Failed to update login item: \(error.localizedDescription)"
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
+
+                if !loginItemError.isEmpty {
+                    Text(loginItemError)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            }
+
             Section("About") {
                 Text("NoiseNanny — Sonos volume enforcer")
                     .foregroundStyle(.secondary)
@@ -167,9 +233,38 @@ private struct GeneralTab: View {
         .onAppear { checkCLI() }
     }
 
+    // MARK: - App update helpers
+
+    private func checkForAppUpdate() {
+        isCheckingAppUpdate = true
+        appUpdateStatus = ""
+        Task { @MainActor in
+            do {
+                if let update = try await AppUpdateChecker.shared.checkForUpdate() {
+                    engine.availableUpdate = update
+                    if update.downloadURL != nil {
+                        appUpdateStatus = "Installing \(update.tagName)…"
+                        try await AppUpdateChecker.shared.installUpdate(update)
+                    } else {
+                        appUpdateStatus = "Update available but no download asset found"
+                    }
+                } else {
+                    engine.availableUpdate = nil
+                    let version = await AppUpdateChecker.shared.currentVersion
+                    appUpdateStatus = "Up to date (v\(version))"
+                }
+            } catch {
+                appUpdateStatus = "Update failed: \(error.localizedDescription)"
+            }
+            isCheckingAppUpdate = false
+        }
+    }
+
+    // MARK: - CLI helpers
+
     private func checkCLI() {
         if let path = settings.resolvedCLIPath() {
-            Task {
+            Task { @MainActor in
                 let ver = await CLIInstaller.shared.installedVersion()
                 cliStatus = ver ?? "Installed at \(path)"
             }
@@ -180,7 +275,7 @@ private struct GeneralTab: View {
 
     private func installCLI() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let version = try await CLIInstaller.shared.install()
                 cliStatus = "Installed \(version)"
@@ -193,19 +288,22 @@ private struct GeneralTab: View {
 
     private func checkForUpdate() {
         isInstalling = true
-        Task {
+        Task { @MainActor in
             do {
                 let release = try await CLIInstaller.shared.latestRelease()
                 let current = await CLIInstaller.shared.installedVersion() ?? ""
                 let remoteVer = CLIInstaller.extractSemanticVersion(release.tagName)
                 let localVer = CLIInstaller.extractSemanticVersion(current)
-                if remoteVer != localVer && !remoteVer.isEmpty {
-                    cliStatus = "Update available: \(release.tagName) (current: \(current))"
+                if !remoteVer.isEmpty,
+                   AppUpdateChecker.isNewer(remote: remoteVer, local: localVer) {
+                    cliStatus = "Updating to \(release.tagName)…"
+                    let version = try await CLIInstaller.shared.install()
+                    cliStatus = "Updated to \(version)"
                 } else {
                     cliStatus = "Up to date (\(release.tagName))"
                 }
             } catch {
-                cliStatus = "Check failed: \(error.localizedDescription)"
+                cliStatus = "Update failed: \(error.localizedDescription)"
             }
             isInstalling = false
         }

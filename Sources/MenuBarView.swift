@@ -20,6 +20,24 @@ struct MenuBarView: View {
             .padding(.top, 8)
             .padding(.bottom, 4)
 
+            // Update available banner
+            if let update = engine.availableUpdate {
+                Divider()
+                Button {
+                    if let url = URL(string: update.htmlURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Update available: \(update.tagName)", systemImage: "arrow.down.circle")
+                        .foregroundStyle(.blue)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            }
+
             Divider()
 
             // Speakers by group

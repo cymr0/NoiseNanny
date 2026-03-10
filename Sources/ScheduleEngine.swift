@@ -11,6 +11,8 @@ final class ScheduleEngine {
     private let cli: SonosCLI
     private let settings: SettingsStore
 
+    var availableUpdate: AppUpdateChecker.UpdateInfo?
+
     init(cli: SonosCLI = SonosCLI(), settings: SettingsStore = .shared) {
         self.cli = cli
         self.settings = settings

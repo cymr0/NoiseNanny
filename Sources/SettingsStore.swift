@@ -12,6 +12,7 @@ final class SettingsStore {
         static let autoStopRules = "autoStopRules"
         static let pollInterval = "pollInterval"
         static let cliPath = "cliPath"
+        static let checkForUpdates = "checkForUpdates"
     }
 
     var volumeRules: [VolumeRule] {
@@ -30,12 +31,23 @@ final class SettingsStore {
         didSet { UserDefaults.standard.set(cliPath, forKey: Keys.cliPath) }
     }
 
+    var checkForUpdates: Bool {
+        didSet { UserDefaults.standard.set(checkForUpdates, forKey: Keys.checkForUpdates) }
+    }
+
     private init() {
         let interval = UserDefaults.standard.double(forKey: Keys.pollInterval)
         self.pollInterval = interval >= 5 ? interval : 30
         self.cliPath = UserDefaults.standard.string(forKey: Keys.cliPath) ?? ""
         self.volumeRules = Self.load(forKey: Keys.volumeRules) ?? []
         self.autoStopRules = Self.load(forKey: Keys.autoStopRules) ?? []
+
+        // Default to true if never set
+        if UserDefaults.standard.object(forKey: Keys.checkForUpdates) == nil {
+            self.checkForUpdates = true
+        } else {
+            self.checkForUpdates = UserDefaults.standard.bool(forKey: Keys.checkForUpdates)
+        }
     }
 
     // MARK: - Persistence helpers
